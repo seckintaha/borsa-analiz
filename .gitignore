@@ -1,0 +1,21 @@
+# Sirlar - ASLA commit etme (yol haritasi 8.4)
+.env
+*.key
+secrets.toml
+.streamlit/secrets.toml
+
+# Veritabani
+*.db
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+
+# Isletim sistemi / editor
+.DS_Store
+.idea/
+.vscode/

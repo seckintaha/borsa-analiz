@@ -1,0 +1,10 @@
+streamlit>=1.30
+yfinance>=0.2.40
+pandas>=2.0
+numpy>=1.24
+plotly>=5.18
+pytest>=8.0
+
+# Opsiyonel (BIST icin daha saglam veri/KAP - Asama 4'te):
+# borsapy
+# kap-sdk
