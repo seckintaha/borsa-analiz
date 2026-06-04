@@ -20,6 +20,7 @@ class Tahmin:
     sinyal_tipi: str         # orn. "RSI_dusuk", "MACD_kesisim"
     ufuk_gun: int
     gerceklesen_pct: float | None = None   # ufuk dolunca doldurulur
+    db_id: int | None = None               # SQLite satir id (None = henuz kaydedilmedi)
 
 
 def gercek_ekle(t: Tahmin, gerceklesen_pct: float) -> Tahmin:
