@@ -332,9 +332,8 @@ with tab_portfoy:
                 tarih = pd.Timestamp.now().date().isoformat()
                 s_upper = al_sym.strip().upper()
                 adet = p.al(s_upper, al_fiyat, tarih, tutar=al_tutar, gerekce=al_gerekce)
-                # İşlemi DB'ye kaydet (efektif fiyat üzerinden)
-                ef_fiyat = p.islemler[-1].fiyat
-                save_islem(DB, s_upper, "AL", tarih, ef_fiyat, adet, al_tutar, al_gerekce)
+                # Ham fiyatı kaydet; load_portfolio replay'de _efektif_alis tekrar uygulanır
+                save_islem(DB, s_upper, "AL", tarih, al_fiyat, adet, al_tutar, al_gerekce)
                 st.success(f"{adet:.2f} adet {s_upper} alındı.")
                 st.rerun()
             except ValueError as e:
@@ -355,8 +354,8 @@ with tab_portfoy:
                     tarih = pd.Timestamp.now().date().isoformat()
                     adet_once = p.pozisyonlar[sat_sym].adet
                     gelir = p.sat(sat_sym, sat_fiyat, tarih)
-                    ef_fiyat = p.islemler[-1].fiyat
-                    save_islem(DB, sat_sym, "SAT", tarih, ef_fiyat, adet_once, gelir)
+                    # Ham fiyatı kaydet; load_portfolio replay'de _efektif_satis tekrar uygulanır
+                    save_islem(DB, sat_sym, "SAT", tarih, sat_fiyat, adet_once, gelir)
                     st.success(f"Satıldı — gelir: {gelir:,.2f} ₺")
                     st.rerun()
                 except ValueError as e:
@@ -621,10 +620,9 @@ with tab_risk:
         with col_s:
             st.markdown("### Stop-Loss Kontrolü")
             poz_dict = {s: {"alis_fiyat": poz.alis_fiyat} for s, poz in p.pozisyonlar.items()}
-            for u in risk.stop_loss_kontrol(poz_dict, fiyatlar_bilinen, config.RISK["stop_loss_pct"]):
-                st.error(u)
-            if not risk.stop_loss_kontrol(poz_dict, fiyatlar_bilinen, config.RISK["stop_loss_pct"]):
-                st.success("✅ Stop-loss tetiklenmedi.")
+            stop_uyarilar = risk.stop_loss_kontrol(poz_dict, fiyatlar_bilinen, config.RISK["stop_loss_pct"])
+            for u in stop_uyarilar: st.error(u)
+            if not stop_uyarilar: st.success("✅ Stop-loss tetiklenmedi.")
     else:
         st.info("Portföy sekmesinden pozisyon eklenince burada analiz görünür.")
 
