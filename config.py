@@ -1,60 +1,111 @@
 """
-Merkezi ayarlar. Sabit değer kodun içine gömülmez; hepsi buradan ayarlanır.
-(Yol haritası Bölüm 5: zaman ufku ve eşikler ayarlanabilir parametredir.)
+Merkezi ayarlar — tüm sabitler buradan yönetilir.
 """
 
-# --- Veritabanı ---
+# ── Veritabanı ───────────────────────────────────────────────────────────────
 DB_PATH = "borsa.db"
 
-# --- İzleme listesi (BIST için sona .IS) ---
+# ── Varsayılan izleme listesi (DB boşsa kullanılır) ─────────────────────────
 WATCHLIST = [
     "THYAO.IS", "GARAN.IS", "ASELS.IS", "SASA.IS", "XU100.IS",
     "AAPL", "MSFT", "NVDA",
 ]
 
-# --- Varsayılan veri çekme ---
-DEFAULT_PERIOD = "1y"     # 1mo, 3mo, 6mo, 1y, 2y, 5y
-DEFAULT_INTERVAL = "1d"   # 1d, 1wk, 1h
+# ── Popüler hisseler — hisse ekleme ekranında kategori olarak gösterilir ────
+POPULER_HISSELER = {
+    "BIST — Bankacılık": [
+        "GARAN.IS", "AKBNK.IS", "YKBNK.IS", "ISCTR.IS", "HALKB.IS", "VAKBN.IS",
+    ],
+    "BIST — Sanayi & Enerji": [
+        "EREGL.IS", "PETKM.IS", "TUPRS.IS", "AKSEN.IS", "ARCLK.IS", "VESTL.IS",
+    ],
+    "BIST — Ulaşım & Havacılık": [
+        "THYAO.IS", "PGSUS.IS", "TAVHL.IS",
+    ],
+    "BIST — Otomotiv": [
+        "TOASO.IS", "FROTO.IS",
+    ],
+    "BIST — Savunma & Teknoloji": [
+        "ASELS.IS", "TTKOM.IS", "TCELL.IS",
+    ],
+    "BIST — Perakende & Gıda": [
+        "BIMAS.IS", "MGROS.IS", "ULKER.IS", "SOKM.IS",
+    ],
+    "BIST — Holding & Cam": [
+        "KCHOL.IS", "SAHOL.IS", "SISE.IS", "SASA.IS",
+    ],
+    "BIST — Endeksler": [
+        "XU100.IS", "XU030.IS", "XUTEK.IS",
+    ],
+    "Global — Teknoloji": [
+        "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "AMD", "INTC", "ORCL",
+    ],
+    "Global — Finans": [
+        "JPM", "BAC", "GS", "MS", "BRK-B",
+    ],
+    "Global — Tüketim & Diğer": [
+        "WMT", "KO", "PEP", "MCD", "NKE", "DIS",
+    ],
+    "ETF & Emtia": [
+        "SPY", "QQQ", "GLD", "TLT", "IWM",
+    ],
+}
 
-# --- Zaman ufukları (gün) - paper portföy ve tarihsel analiz aynı değerleri kullanır ---
+# ── Piyasa özeti ekranı için hisse listeleri ─────────────────────────────────
+PIYASA_BIST = [
+    "THYAO.IS", "GARAN.IS", "AKBNK.IS", "YKBNK.IS", "ISCTR.IS",
+    "ASELS.IS", "EREGL.IS", "KCHOL.IS", "TUPRS.IS", "BIMAS.IS",
+    "ARCLK.IS", "TOASO.IS", "FROTO.IS", "PETKM.IS", "TTKOM.IS",
+    "PGSUS.IS", "SISE.IS", "SASA.IS", "TCELL.IS", "HALKB.IS",
+]
+
+PIYASA_GLOBAL = [
+    "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA",
+    "AMD", "JPM", "BAC", "SPY", "QQQ", "GLD",
+]
+
+# ── Varsayılan grafik ayarları ────────────────────────────────────────────────
+DEFAULT_PERIOD   = "1y"
+DEFAULT_INTERVAL = "1d"
+
+# ── Zaman ufukları (gün) ──────────────────────────────────────────────────────
 HORIZONS = {
-    "kisa": 14,     # 2 hafta
-    "orta": 30,     # 1 ay
-    "uzun": 180,    # 6 ay
+    "Kısa (2 hafta)": 14,
+    "Orta (1 ay)":    30,
+    "Uzun (6 ay)":   180,
 }
 
-# --- Paper portföy ---
-INITIAL_CAPITAL = 100_000.0   # TL (Asama 2'de kullanilacak)
+# ── Sanal portföy başlangıç sermayesi ─────────────────────────────────────────
+INITIAL_CAPITAL = 100_000.0
 
-# --- Tarama eşikleri (Aşama 1) ---
+# ── Tarama eşikleri ───────────────────────────────────────────────────────────
 SCREEN = {
-    "gainer_pct": 5.0,      # gunluk %5+ artis "yukselen" sayilir
-    "loser_pct": -5.0,      # gunluk %5+ dusus "dusen" sayilir
-    "volume_sigma": 3.0,    # hacim, ortalamadan kac std sapunca "anormal"
-    "rsi_low": 30,          # asiri satim esigi
-    "rsi_high": 70,         # asiri alim esigi
-    "thin_volume": 100_000, # bunun altinda gunluk hacim "ince/likit degil" bayragi
+    "gainer_pct":   5.0,      # günlük %5+ artış "yükselen" sayılır
+    "loser_pct":   -5.0,      # günlük %5+ düşüş "düşen" sayılır
+    "volume_sigma": 3.0,      # hacim ortalamanın kaç std üstündeyse "anormal"
+    "rsi_low":     30,        # aşırı satım eşiği
+    "rsi_high":    70,        # aşırı alım eşiği
+    "thin_volume": 100_000,   # altında günlük hacim "ince/likit değil" bayrağı
 }
 
-# --- İşlem maliyetleri (Aşama 2 & 3 - gerçekçi simülasyon için) ---
+# ── İşlem maliyetleri ─────────────────────────────────────────────────────────
 COSTS = {
-    "komisyon_pct": 0.002,   # %0.2 alis+satis komisyonu (orn)
-    "kayma_pct": 0.001,      # %0.1 kayma (slippage)
+    "komisyon_pct": 0.002,    # %0.2 alış+satış komisyonu
+    "kayma_pct":    0.001,    # %0.1 kayma (slippage)
 }
 
-# --- Risk yönetimi (Aşama 9) ---
+# ── Risk yönetimi eşikleri ────────────────────────────────────────────────────
 RISK = {
-    "pozisyon_pct": 0.10,        # tek pozisyona sermayenin en fazla %10'u
-    "yogunlasma_uyari_pct": 0.25, # tek hisse portfoyun %25'ini gecerse uyar
-    "stop_loss_pct": -0.08,      # %8 zararda stop onerisi
+    "pozisyon_pct":          0.10,   # tek pozisyona sermayenin en fazla %10'u
+    "yogunlasma_uyari_pct":  0.25,   # tek hisse portföyün %25'ini geçerse uyar
+    "stop_loss_pct":        -0.08,   # %8 zararda çıkış önerisi
 }
 
-# --- Tarihsel analiz (Aşama 5) ---
+# ── Tarihsel analiz ───────────────────────────────────────────────────────────
 HISTORICAL = {
-    "sicrama_esigi_pct": 8.0,    # gunluk %8+ "sicrama" sayilir
-    "ileri_gun": [5, 10, 20],    # sicrama sonrasi bakilacak gun ufuklari
+    "sicrama_esigi_pct": 8.0,
+    "ileri_gun":         [5, 10, 20],
 }
 
-# --- Veri kaynağı sırası (ilki basarisiz olursa digeri denenebilir) ---
-# Not: borsapy BIST icin daha saglam; kuruluysa fetcher otomatik dener.
+# ── Veri kaynağı ──────────────────────────────────────────────────────────────
 SOURCES = ["yfinance"]
