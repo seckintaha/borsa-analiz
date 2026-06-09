@@ -8,6 +8,9 @@ sentez, 7 makro/rejim, 10 otomasyon dahil). Çekirdek testlerle doğrulanmışt�
 > yatırım tavsiyesi değildir. Üretilen sinyaller teknik göstergelerin matematiksel
 > çıktısıdır ve sık sık yanılır.
 
+📐 **Mimari, tasarım ilkeleri ve güvenlik:** [`MIMARI.md`](MIMARI.md).
+🔑 **API anahtarı kurulumu:** [`.env.example`](.env.example).
+
 ## Şu an ne yapıyor
 
 - **Veri:** Global (AAPL) ve BIST (THYAO.IS) için fiyat/OHLCV çeker; her kayıt

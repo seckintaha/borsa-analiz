@@ -12,7 +12,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 import config
-from data.fetcher import fetch_history, fetch_many
+from data.fetcher import fetch_many
 from data.access import veri_getir
 from data.storage import (
     init_db, save_prices,

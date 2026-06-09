@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 
 from analysis.screener import scan, ScreenRow
 from analysis.macro import rejim_tespit, ozetle as rejim_ozetle
-from data.fetcher import fetch_history
+from data.access import veri_getir
 from data.storage import init_db, log_event
 
 
@@ -84,9 +84,9 @@ def calistir(db_path: str, watchlist: list[str], screen_cfg: dict,
 
     rows = scan(watchlist, screen_cfg)
 
-    # Piyasa rejimi (rejim endeksinden)
+    # Piyasa rejimi (rejim endeksinden; canlı yoksa DB önbelleğinden)
     endeks = macro_cfg.get("rejim_endeksi", "XU100.IS")
-    fr = fetch_history(endeks, period="2y", interval="1d")
+    fr = veri_getir(db_path, endeks, period="2y", interval="1d")
     if fr.ok and fr.data is not None:
         rej = rejim_tespit(
             fr.data,
