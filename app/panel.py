@@ -13,6 +13,7 @@ from plotly.subplots import make_subplots
 
 import config
 from data.fetcher import fetch_history, fetch_many
+from data.access import veri_getir
 from data.storage import (
     init_db, save_prices,
     save_islem, load_portfolio, temizle_portfolio,
@@ -23,8 +24,11 @@ from analysis.indicators import add_indicators
 from analysis.signals import evaluate
 from analysis.screener import scan
 from analysis.historical import olay_calismasi, mevsimsellik_aylik
-from analysis.calibration import Tahmin, gercek_ekle, kalibre_et
+from analysis.calibration import Tahmin, gercek_ekle, kalibre_et, genel_ozet
 from analysis import risk
+from analysis import macro
+from analysis import news
+from analysis import llm
 from portfolio.paper import PaperPortfolio, cok_ufuklu_getiri
 from backtest.engine import backtest, train_test_bol, strateji_sma_kesisim
 
@@ -50,7 +54,13 @@ if "tahminler" not in st.session_state:
 
 @st.cache_data(ttl=300)
 def _veri(sym: str, period: str, interval: str):
-    return fetch_history(sym, period, interval)
+    # Canlı veri + DB önbellek yedeği + kalite/güncellik denetimi
+    return veri_getir(DB, sym, period, interval,
+                      db_yedek=config.VERI["db_yedek"],
+                      max_deneme=config.VERI["max_deneme"],
+                      bekleme_sn=config.VERI["bekleme_sn"],
+                      bayat_gun=config.VERI["bayat_gun"],
+                      bosluk_gun=config.VERI["bosluk_gun"])
 
 @st.cache_data(ttl=300)
 def _liste_ozet(wl_key: str) -> list[dict]:
@@ -234,17 +244,21 @@ if fr and fr.ok:
 
 # ── Sekmeler ──────────────────────────────────────────────────────────────────
 
-(tab_panel, tab_liste, tab_piyasa, tab_portfoy,
+(tab_panel, tab_liste, tab_piyasa, tab_rejim, tab_haber, tab_ai, tab_portfoy,
  tab_backtest, tab_tarihsel, tab_kalibrasyon,
- tab_risk, tab_ogren) = st.tabs([
+ tab_risk, tab_otomasyon, tab_ogren) = st.tabs([
     "📊 Hisse Detayı",
     "📋 İzleme Listesi",
     "🔥 Piyasa Özeti",
+    "🌐 Piyasa Rejimi",
+    "📰 Haber & KAP",
+    "🤖 AI Sentez",
     "💼 Sanal Portföy",
     "🔬 Strateji Testi",
     "📅 Tarihsel Analiz",
     "🎯 Tahmin Takibi",
     "⚠️ Risk Hesaplama",
+    "⏰ Otomasyon",
     "📚 Gösterge Rehberi",
 ])
 
@@ -271,11 +285,18 @@ with tab_panel:
         rsi_son = df["RSI"].iloc[-1]
 
         st.markdown(f"## {sym}")
+        _kaynak_ad = "Yahoo Finance (yfinance)" if fr.source == "yfinance" else fr.source
         st.caption(
-            f"Kaynak: Yahoo Finance (yfinance) · "
+            f"Kaynak: {_kaynak_ad} · "
             f"{fr.meta.get('satir', 0)} günlük veri · "
-            f"Son güncelleme: {fr.fetched_at[:10]}"
+            f"Temettü/bölünme düzeltmeli · "
+            f"Son veri: {fr.meta.get('son_tarih', fr.fetched_at[:10])}"
         )
+        if fr.bayat:
+            st.warning("⏳ Bu veri güncel olmayabilir (bayat) — "
+                       "delisting, tatil ya da durmuş veri akışı olabilir.")
+        for _u in getattr(fr, "uyarilar", []):
+            st.caption("⚠️ " + _u)
 
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Son Fiyat",        f"{son:,.2f}", f"{degisim:+.2f}%")
@@ -1006,3 +1027,253 @@ Birden fazla gösterge aynı yönü işaret ediyorsa sinyal daha anlamlıdır.
         "💡 Her sekmede 'Bu sekme ne işe yarar?' bölümünü açın — "
         "o sekmenin amacı ve nasıl kullanılacağı orada açıklanıyor."
     )
+
+
+# ── Aşama 4/6/7 için yardımcılar ──────────────────────────────────────────────
+
+@st.cache_data(ttl=600)
+def _rejim_veri(endeks: str):
+    return veri_getir(DB, endeks, period="2y", interval="1d",
+                      db_yedek=config.VERI["db_yedek"],
+                      bayat_gun=config.VERI["bayat_gun"])
+
+@st.cache_data(ttl=600)
+def _coklu_close(wl_key: str) -> dict:
+    symbols = [s for s in wl_key.split(",") if s]
+    out = {}
+    for s, r in fetch_many(symbols, period="6mo").items():
+        if r.ok and r.data is not None:
+            out[s] = r.data["Close"]
+    return out
+
+@st.cache_data(ttl=600)
+def _hisse_haber(symbol: str, limit: int):
+    return news.hisse_haberleri(symbol, limit=limit)
+
+@st.cache_data(ttl=600)
+def _piyasa_haber(rss_key: str, limit: int):
+    return news.piyasa_akisi(dict(config.HABER["rss_feeds"]), limit=limit)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 🌐 PİYASA REJİMİ (Aşama 7)
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_rejim:
+    st.markdown("## 🌐 Piyasa Rejimi")
+    with st.expander("Bu sekme ne işe yarar?"):
+        st.markdown(
+            "Tek hisseden önce **piyasanın genel havasını** okur. Boğa "
+            "piyasasında zayıf hisse bile taşınır; ayı piyasasında güçlü hisse "
+            "bile satılır. Endeksin trendini ve oynaklığını sınıflar — gelecek "
+            "tahmini değil, **mevcut durumun** dürüst etiketidir."
+        )
+
+    endeks = config.MACRO["rejim_endeksi"]
+    st.caption(f"Rejim endeksi: {endeks} · 2 yıllık veri · Yatırım tavsiyesi değildir")
+    fr_e = _rejim_veri(endeks)
+    if not fr_e.ok or fr_e.data is None:
+        st.error(f"Rejim endeksi alınamadı: {fr_e.note}")
+    else:
+        r = macro.rejim_tespit(
+            fr_e.data,
+            oynaklik_penceresi=config.MACRO["oynaklik_penceresi"],
+            yatay_band_pct=config.MACRO["yatay_band_pct"],
+            yuksek_oynaklik_p=config.MACRO["yuksek_oynaklik_p"],
+            dusuk_oynaklik_p=config.MACRO["dusuk_oynaklik_p"],
+        )
+        if r.rejim == "belirsiz":
+            st.warning(r.not_)
+        else:
+            renk = {"Boğa": "🟢", "Ayı": "🔴", "Yatay": "🟡"}.get(r.rejim, "⚪")
+            st.markdown(f"### {renk} {r.rejim} · oynaklık: {r.oynaklik}")
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Fiyat", f"{r.fiyat:,.0f}")
+            m2.metric("50g ort.", f"{r.sma50:,.0f}" if r.sma50 else "—")
+            m3.metric("200g ort.", f"{r.sma200:,.0f}" if r.sma200 else "—")
+            m4.metric("Zirveden", f"{r.zirveden_dusus_pct:+.1f}%"
+                      if r.zirveden_dusus_pct is not None else "—")
+            st.markdown("**Gerekçeler**")
+            for n in r.notlar:
+                st.write(f"• {n}")
+
+        # Piyasa genişliği (breadth) — izleme listesi üzerinden
+        if watchlist:
+            with st.spinner("Piyasa genişliği hesaplanıyor..."):
+                closes = _coklu_close(",".join(watchlist))
+            g = macro.piyasa_genisligi(closes, pencere=50)
+            if g["oran"] is not None:
+                st.markdown("---")
+                st.markdown(
+                    f"**Piyasa genişliği:** {g['ustte']}/{g['toplam']} hisse "
+                    f"50 günlük ortalamasının üzerinde (%{g['oran']*100:.0f})"
+                )
+                st.caption(
+                    "Geniş katılım (çoğu hisse ortalamasının üstünde) sağlıklı "
+                    "yükseliş işaretidir; az hisseyle yükselen piyasa kırılgandır."
+                )
+    st.caption("Bilgilendirme amaçlıdır. Yatırım tavsiyesi değildir.")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 📰 HABER & KAP (Aşama 4)
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_haber:
+    st.markdown("## 📰 Haber & KAP")
+    with st.expander("Bu sekme ne işe yarar?"):
+        st.markdown(
+            "Seçili hissenin **son haberlerini** (yfinance) ve config'e "
+            "eklediğiniz **RSS/KAP akışlarını** gösterir. Her haber kaynağa ve "
+            "yayın zamanına bağlıdır; veri yoksa açıkça belirtilir. Haberler ham "
+            "bilgidir, hiçbiri yatırım tavsiyesi değildir."
+        )
+
+    st.markdown(f"### {sym or '—'} ile ilgili haberler" if sym else "### Hisse haberleri")
+    if not sym:
+        st.info("👈 Sol taraftan bir hisse seçin.")
+    else:
+        with st.spinner("Haberler çekiliyor..."):
+            hs = _hisse_haber(sym, config.HABER["hisse_basina_limit"])
+        if not hs.ok:
+            st.warning(hs.not_)
+        else:
+            for h in hs.kayitlar:
+                zaman = (h.zaman or "")[:16].replace("T", " ")
+                baslik = f"[{h.baslik}]({h.link})" if h.link else h.baslik
+                st.markdown(f"**{baslik}**")
+                st.caption(f"{h.kaynak} · {zaman}")
+
+    st.markdown("---")
+    st.markdown("### Genel piyasa / KAP akışı")
+    if not config.HABER["rss_feeds"]:
+        st.info(
+            "RSS akışı yapılandırılmamış. `config.py` içindeki "
+            "`HABER['rss_feeds']` sözlüğüne ad: URL ekleyin "
+            "(örn. KAP veya bir finans haber RSS adresi)."
+        )
+    else:
+        with st.spinner("Akış çekiliyor..."):
+            ps = _piyasa_haber(",".join(config.HABER["rss_feeds"]),
+                               config.HABER["rss_basina_limit"])
+        if not ps.ok:
+            st.warning(ps.not_)
+        else:
+            if ps.not_:
+                st.caption("⚠️ " + ps.not_)
+            for h in ps.kayitlar:
+                zaman = (h.zaman or "")[:16].replace("T", " ")
+                baslik = f"[{h.baslik}]({h.link})" if h.link else h.baslik
+                st.markdown(f"**{baslik}**")
+                st.caption(f"{h.kaynak} · {zaman}")
+    st.caption("Haberler ham bilgidir; doğruluğu garanti edilmez, tavsiye değildir.")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 🤖 AI SENTEZ (Aşama 6)
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_ai:
+    st.markdown("## 🤖 AI Sentez")
+    with st.expander("Bu sekme ne işe yarar?"):
+        st.markdown(
+            "Diğer sekmelerin **zaten hesapladığı** sayıları (sinyal, tarihsel "
+            "oranlar, piyasa rejimi, kalibrasyon, haber başlıkları) Claude'a "
+            "verip dengeli bir Türkçe özete çevirir. Model **yeni veri "
+            "uydurmaz** ve **AL/SAT tavsiyesi vermez** — sadece eldeki çıktıları "
+            "sadeleştirir ve her olumlu noktaya ayı senaryosu ekler.\n\n"
+            "Çalışması için ortam değişkeni gerekir: `ANTHROPIC_API_KEY`."
+        )
+
+    if not sym or df is None:
+        st.info("👈 Önce bir hisse seçin (bağlam buradan toplanır).")
+    else:
+        res = evaluate(df, thin_volume=config.SCREEN["thin_volume"])
+
+        # Bağlamı topla
+        baglam = {
+            "symbol": sym,
+            "fiyat": round(float(df["Close"].iloc[-1]), 2),
+            "sinyal_ozet": res.ozet,
+            "sinyal_notlar": res.notlar,
+            "ayi_senaryosu": res.ayi_senaryosu,
+            "bayraklar": res.bayraklar,
+        }
+        # Piyasa rejimi
+        fr_e = _rejim_veri(config.MACRO["rejim_endeksi"])
+        if fr_e.ok and fr_e.data is not None:
+            baglam["rejim"] = macro.ozetle(macro.rejim_tespit(fr_e.data))
+        # Tarihsel oranlar
+        try:
+            from analysis.historical import ozetle as _hozet
+            dag = olay_calismasi(df, esik_pct=config.HISTORICAL["sicrama_esigi_pct"],
+                                 ileri_gun=config.HISTORICAL["ileri_gun"])
+            baglam["tarihsel"] = [_hozet(d) for d in dag.values()]
+        except Exception:
+            pass
+        # Kalibrasyon
+        tahminler = st.session_state.get("tahminler", [])
+        if tahminler:
+            baglam["kalibrasyon"] = genel_ozet(kalibre_et(tahminler, min_ornek=20))
+        # Haber başlıkları
+        hs = _hisse_haber(sym, 5)
+        if hs.ok:
+            baglam["haber_basliklari"] = [h.baslik for h in hs.kayitlar]
+
+        with st.expander("Claude'a gönderilecek bağlam (şeffaflık)"):
+            st.code(llm.baglam_metni(baglam) or "(bağlam boş)", language="markdown")
+
+        if st.button("🤖 Sentezi oluştur", type="primary"):
+            with st.spinner("Claude düşünüyor..."):
+                s = llm.sentezle(baglam, model=config.LLM["model"],
+                                 max_tokens=config.LLM["max_tokens"])
+            if s.ok:
+                st.markdown(s.metin)
+                st.caption(f"Model: {s.model}")
+            else:
+                st.warning(s.not_)
+                if "anahtar" in s.not_ or "API" in s.not_:
+                    st.code("export ANTHROPIC_API_KEY=sk-ant-...", language="bash")
+                    st.caption("anthropic kütüphanesi gerekiyorsa: pip install anthropic")
+    st.caption("Üretilen metin yatırım tavsiyesi değildir.")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ⏰ OTOMASYON (Aşama 10)
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_otomasyon:
+    st.markdown("## ⏰ Otomasyon")
+    with st.expander("Bu sekme ne işe yarar?"):
+        st.markdown(
+            "İzleme listesini tarar, piyasa rejimini okur ve `raporlar/` altına "
+            "**tarihli bir Markdown rapor** yazar. Buradan tek seferlik "
+            "çalıştırabilir; her gün otomatik çalışması için aşağıdaki cron "
+            "komutunu kullanabilirsiniz."
+        )
+
+    st.caption(f"{len(watchlist)} hisse taranacak · rejim: "
+               f"{config.MACRO['rejim_endeksi']} · Yatırım tavsiyesi değildir")
+
+    if st.button("▶️ Gün sonu taramasını çalıştır", type="primary"):
+        from automation.scheduler import calistir
+        with st.spinner("Taranıyor (canlı veri çekiliyor)..."):
+            ozet = calistir(
+                db_path=DB, watchlist=watchlist, screen_cfg=config.SCREEN,
+                macro_cfg=config.MACRO,
+                rapor_klasoru=config.OTOMASYON["rapor_klasoru"],
+            )
+        st.success(f"Bitti — {ozet['taranan']} hisse tarandı, "
+                   f"{ozet['one_cikan']} öne çıkan.")
+        st.markdown(f"**Rejim:** {ozet['rejim']}")
+        st.markdown(f"**Rapor dosyası:** `{ozet['rapor_yolu']}`")
+        try:
+            with open(ozet["rapor_yolu"], encoding="utf-8") as f:
+                st.markdown(f.read())
+        except OSError:
+            pass
+
+    st.markdown("---")
+    st.markdown("**Her gün otomatik çalıştırma (cron, hafta içi 18:30):**")
+    st.code(
+        "30 18 * * 1-5  cd /yol/borsa-analiz && "
+        ".venv/bin/python -m automation.run",
+        language="bash",
+    )
+    st.caption("Komut satırından: `python -m automation.run`")

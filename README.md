@@ -1,8 +1,8 @@
 # Borsa Analiz & Takip Sistemi
 
 Global + BIST hisseleri için takip, teknik analiz ve gün sonu tarama sistemi.
-Bu depo, projenin **Aşama 0–3, 5, 8, 9** başlangıcını içerir (canlı veri
-gerektirmeyen, test edilmiş çekirdek). Tam plan için `borsa_analiz_yol_haritasi.md`.
+Bu depo, projenin **Aşama 0–10** modüllerini içerir (Aşama 4 haber/KAP, 6 LLM
+sentez, 7 makro/rejim, 10 otomasyon dahil). Çekirdek testlerle doğrulanmıştır.
 
 > **Önemli:** Bu bir karar **destek** aracıdır, kâhin değildir. Hiçbir çıktısı
 > yatırım tavsiyesi değildir. Üretilen sinyaller teknik göstergelerin matematiksel
@@ -30,6 +30,15 @@ gerektirmeyen, test edilmiş çekirdek). Tam plan için `borsa_analiz_yol_harita
   isabet oranı + **yazı-tura (0.5) kıyası**.
 - **Risk (Aşama 9):** Pozisyon büyüklüğü, yoğunlaşma uyarısı, stop-loss, korelasyon,
   portföy max düşüş.
+- **Haber & KAP (Aşama 4):** Hisseye özel haberler (yfinance) + config'e eklenen
+  RSS/KAP akışları; her haber **kaynağa + yayın zamanına** bağlı, ek anahtar gerekmez.
+- **LLM Sentez (Aşama 6):** Yukarıdaki deterministik çıktıları Claude ile dengeli
+  bir Türkçe özete çevirir; **yeni veri uydurmaz, AL/SAT tavsiyesi vermez**, her
+  olumlu noktaya ayı senaryosu ekler. `ANTHROPIC_API_KEY` yoksa açıkça belirtir.
+- **Makro / Rejim (Aşama 7):** Endeksten piyasa rejimini (Boğa/Ayı/Yatay) ve
+  oynaklığı **gerekçesiyle** sınıflar; izleme listesinden piyasa genişliği (breadth).
+- **Otomasyon (Aşama 10):** İzleme listesini tarar, rejimi okur, `raporlar/` altına
+  tarihli Markdown rapor yazar. `python -m automation.run` veya cron ile.
 
 ## Hızlı demo (canlı veri gerektirmez)
 
@@ -71,7 +80,8 @@ borsa-analiz/
 ├── config.py              # tüm ayarlar (izleme listesi, ufuklar, eşikler, maliyet, risk)
 ├── demo.py                # uçtan uca offline demo
 ├── data/
-│   ├── fetcher.py         # veri çekme (hata yakalama, kaynak+zaman)
+│   ├── fetcher.py         # veri çekme (retry, kalite, bayat/boşluk tespiti)
+│   ├── access.py          # canlı çekme + DB önbellek yedeği (offline dayanıklılık)
 │   └── storage.py         # SQLite saklama
 ├── analysis/
 │   ├── indicators.py      # teknik göstergeler (saf pandas)
@@ -79,16 +89,24 @@ borsa-analiz/
 │   ├── screener.py        # Aşama 1: gün sonu tarama
 │   ├── historical.py      # Aşama 5: tarihsel temel oranlar + mevsimsellik
 │   ├── calibration.py     # Aşama 8: kendini ölçme
-│   └── risk.py            # Aşama 9: risk yönetimi
+│   ├── risk.py            # Aşama 9: risk yönetimi
+│   ├── news.py            # Aşama 4: haber & KAP (yfinance + RSS)
+│   ├── macro.py           # Aşama 7: makro / piyasa rejimi
+│   └── llm.py             # Aşama 6: LLM sentez (Claude)
 ├── portfolio/
 │   └── paper.py           # Aşama 2: paper portföy
 ├── backtest/
 │   └── engine.py          # Aşama 3: backtest motoru
+├── automation/
+│   ├── scheduler.py       # Aşama 10: tara → rejim → rapor
+│   └── run.py             # `python -m automation.run`
 ├── app/
-│   └── panel.py           # Streamlit arayüz
+│   └── panel.py           # Streamlit arayüz (13 sekme)
 └── tests/
     ├── test_indicators.py # gösterge/sinyal testleri
-    └── test_stages.py     # Aşama 2-3-5-8-9 testleri (22 test toplam)
+    ├── test_stages.py     # Aşama 2-3-5-8-9 testleri
+    ├── test_stages2.py    # Aşama 4-6-7-10 testleri
+    └── test_data.py       # veri dayanıklılığı testleri (toplam 42 test)
 ```
 
 ## Ayarlar
@@ -96,25 +114,57 @@ borsa-analiz/
 Her şey `config.py`'de: izleme listesi, zaman ufukları (kısa/orta/uzun — sabit
 değil), tarama eşikleri, başlangıç sermayesi. Sabit değer kodun içine gömülmez.
 
-## Claude Code ile devam
+## Otomasyon (Aşama 10)
 
-Bu depoyu GitHub'a koyup Claude Code'a bağlayın, sonra sırayla isteyin:
+İzleme listesini tarayıp tarihli rapor üretmek için:
 
-1. "Bu projeyi çalıştır: `pip install -r requirements.txt`, sonra `python demo.py`,
-   `pytest` ve `streamlit run app/panel.py` ile her şeyin çalıştığını doğrula."
-2. "Paper portföy (Aşama 2), backtest (Aşama 3), tarihsel (Aşama 5), kalibrasyon
-   (Aşama 8) ve risk (Aşama 9) modüllerini Streamlit paneline yeni sekmeler olarak
-   bağla; şu an bunlar kod olarak hazır ama arayüze takılı değil."
-3. "Aşama 4 (KAP & haber) modülünü ekle: kap_sdk ile bildirimler, Finnhub/RSS ile
-   haber, hepsi kaynağa+tarihe bağlı."
-4. Sonra Aşama 6 (LLM sentez), 7 (makro/rejim), 10 (otomasyon) — yol haritası sırası.
+```bash
+python -m automation.run        # raporlar/rapor-YYYY-AA-GG.md yazar
+```
 
-## Sınırlar / bilinen riskler
+Her gün otomatik (cron, hafta içi 18:30):
 
-- Veri kaynakları (yfinance) resmi olmayan yöntemle çalışır; format değişebilir,
-  hız limiti olabilir. İlk gerçek çalıştırmada bir yerde takılması olağandır.
-- BIST'e özgü düzeltmeler (bedelsiz/temettü), delisting, işlem takvimi henüz tam
-  ele alınmadı (yol haritası Bölüm 8.1).
+```
+30 18 * * 1-5  cd /yol/borsa-analiz && .venv/bin/python -m automation.run
+```
+
+## AI Sentez (Aşama 6) için anahtar
+
+"AI Sentez" sekmesi ve `analysis/llm.py` Claude API kullanır. Etkinleştirmek için:
+
+```bash
+pip install anthropic
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Anahtar yoksa panel yine çalışır; o sekme "anahtar yok" diye açıkça belirtir
+ve **asla veri uydurmaz**.
+
+## Geliştirme notları
+
+- Yeni aşamalar mevcut felsefeye sadıktır: her çıktı kaynağa+zamana bağlı, veri
+  yoksa açıkça belirtilir, sinyaller AL/SAT hükmü vermez, her olumlu görüşe ayı
+  senaryosu eşlik eder.
+- Aşama 4/7/10 ek bağımlılık gerektirmez; Aşama 6 yalnızca opsiyonel `anthropic`.
+
+## Veri dayanıklılığı (bilinen sınırlara karşı alınan önlemler)
+
+- **Hız limiti / geçici hata:** çekme, üstel beklemeyle **3 kez** yeniden denenir
+  (`config.VERI`).
+- **Offline / çekme başarısız:** canlı veri alınamazsa son bilinen veri **DB
+  önbelleğinden** gösterilir; kaynak `cache (DB)` ve "bayat" olarak işaretlenir.
+- **Veri kalitesi:** eksik (NaN) satırlar atılır; sıfır/negatif fiyat ve negatif
+  hacim uyarı üretir.
+- **Temettü/bölünme/bedelsiz:** `auto_adjust=True` ile geriye dönük düzeltilir
+  (meta'da `adjusted`).
+- **Delisting / işlem takvimi:** son veri çok eskiyse (**bayat**) ve uzun veri
+  boşluğu varsa açıkça uyarılır.
+
+## Kalan sınırlar / riskler
+
+- yfinance resmi olmayan bir kaynaktır; üstteki önlemlere rağmen format değişebilir.
+- Tam bir borsa **işlem takvimi** entegre değildir; yalnızca boşluk/güncellik
+  sezgisel olarak tespit edilir.
 - Sinyaller basit kurallardır; backtest ve kalibrasyon (Aşama 3 ve 8) yapılmadan
   güvenilirliği ölçülemez.
 - **Kendini kanıtlamadan gerçek parayla bağlamayın.**

@@ -5,6 +5,14 @@ numpy>=1.24
 plotly>=5.18
 pytest>=8.0
 
-# Opsiyonel (BIST icin daha saglam veri/KAP - Asama 4'te):
+# Opsiyonel — Asama 6 (LLM Sentez): Claude API ile dengeli ozet.
+# Kurarsaniz ve ANTHROPIC_API_KEY ayarlarsaniz "AI Sentez" sekmesi calisir.
+# Kurmazsaniz panel yine calisir; o sekme "anahtar yok" der.
+# anthropic>=0.40
+
+# Opsiyonel (BIST icin daha saglam veri/KAP - Asama 4 RSS akislari icin):
 # borsapy
 # kap-sdk
+
+# Not: Asama 4 (haber, yfinance+stdlib RSS), 7 (rejim) ve 10 (otomasyon)
+# ek bagimlilik gerektirmez.
