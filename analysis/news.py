@@ -17,8 +17,27 @@ garanti edilmez.
 from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 import urllib.request
-import xml.etree.ElementTree as ET
+
+# XML'i güvenli ayrıştır: defusedxml varsa entity-bomb / harici varlık (XXE)
+# saldırılarına karşı korur; yoksa stdlib'e düşer (indirme boyutu yine sınırlı).
+try:
+    from defusedxml.ElementTree import fromstring as _xml_fromstring
+except ImportError:
+    from xml.etree.ElementTree import fromstring as _xml_fromstring
+
+# Güvenlik sınırları
+_IZINLI_SEMALAR = ("http", "https")   # file://, ftp:// vb. engellenir (SSRF/yerel dosya)
+_MAX_RSS_BAYT = 3_000_000              # 3 MB üstü indirilmez (bellek DoS koruması)
+
+
+def _http_url_mu(url: str) -> bool:
+    """Yalnızca http/https adreslerine izin verir (yerel dosya/SSRF koruması)."""
+    try:
+        return urlparse(url).scheme.lower() in _IZINLI_SEMALAR
+    except Exception:
+        return False
 
 
 @dataclass
@@ -97,8 +116,8 @@ def hisse_haberleri(symbol: str, limit: int = 8) -> HaberSonuc:
 # ── Genel / KAP akışı (RSS, saf stdlib) ───────────────────────────────────────
 
 def _rss_ayristir(xml_metni: str, feed_adi: str, limit: int) -> list[HaberKaydi]:
-    """RSS 2.0 ve Atom akışlarını ayrıştırır (namespace'e dayanmaz)."""
-    kok = ET.fromstring(xml_metni)
+    """RSS 2.0 ve Atom akışlarını ayrıştırır (namespace'e dayanmaz, güvenli parser)."""
+    kok = _xml_fromstring(xml_metni)
 
     def yerel(etiket: str) -> str:
         return etiket.rsplit("}", 1)[-1]  # namespace'i at
@@ -140,15 +159,24 @@ def rss_oku(feed_url: str, feed_adi: str = "RSS", limit: int = 10,
             timeout: float = 8.0) -> HaberSonuc:
     """Bir RSS/Atom akışını okur. Ağ/parse hatasında ok=False döner."""
     fetched_at = _now_iso()
+
+    # Güvenlik: yalnızca http/https (file://, ftp:// engellenir)
+    if not _http_url_mu(feed_url):
+        return HaberSonuc(False, fetched_at=fetched_at,
+                          not_="güvenlik: yalnızca http/https adreslerine izin verilir")
+
     try:
         istek = urllib.request.Request(feed_url, headers={"User-Agent": "borsa-analiz/1.0"})
         with urllib.request.urlopen(istek, timeout=timeout) as yanit:
-            ham = yanit.read().decode("utf-8", errors="replace")
-        kayitlar = _rss_ayristir(ham, feed_adi, limit)
-    except ET.ParseError as exc:
-        return HaberSonuc(False, fetched_at=fetched_at, not_=f"RSS ayrıştırma hatası: {exc}")
+            # Boyut sınırı: aşırı büyük/kötücül akışa karşı bellek koruması
+            ham_bayt = yanit.read(_MAX_RSS_BAYT + 1)
+        if len(ham_bayt) > _MAX_RSS_BAYT:
+            return HaberSonuc(False, fetched_at=fetched_at,
+                              not_=f"akış çok büyük (> {_MAX_RSS_BAYT // 1_000_000} MB) — atlandı")
+        kayitlar = _rss_ayristir(ham_bayt.decode("utf-8", errors="replace"), feed_adi, limit)
     except Exception as exc:
-        return HaberSonuc(False, fetched_at=fetched_at, not_=f"RSS çekme hatası: {exc}")
+        # defusedxml entity-bomb dahil tüm parse/ağ hatalarını dürüstçe bildir
+        return HaberSonuc(False, fetched_at=fetched_at, not_=f"RSS işleme hatası: {exc}")
 
     if not kayitlar:
         return HaberSonuc(False, fetched_at=fetched_at, not_="akışta haber yok")

@@ -10,6 +10,11 @@ pytest>=8.0
 # Kurmazsaniz panel yine calisir; o sekme "anahtar yok" der.
 # anthropic>=0.40
 
+# Opsiyonel ama ONERILEN - Asama 4 RSS guvenligi:
+# Dis RSS akislarini entity-bomb / XXE saldirilarina karsi guvenli ayristirir.
+# Kurulu degilse stdlib'e dusulur (indirme boyutu yine sinirlidir).
+# defusedxml>=0.7
+
 # Opsiyonel (BIST icin daha saglam veri/KAP - Asama 4 RSS akislari icin):
 # borsapy
 # kap-sdk

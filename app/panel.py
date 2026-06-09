@@ -1138,7 +1138,8 @@ with tab_haber:
         else:
             for h in hs.kayitlar:
                 zaman = (h.zaman or "")[:16].replace("T", " ")
-                baslik = f"[{h.baslik}]({h.link})" if h.link else h.baslik
+                _link = h.link if news._http_url_mu(h.link or "") else ""
+                baslik = f"[{h.baslik}]({_link})" if _link else h.baslik
                 st.markdown(f"**{baslik}**")
                 st.caption(f"{h.kaynak} · {zaman}")
 
@@ -1161,7 +1162,8 @@ with tab_haber:
                 st.caption("⚠️ " + ps.not_)
             for h in ps.kayitlar:
                 zaman = (h.zaman or "")[:16].replace("T", " ")
-                baslik = f"[{h.baslik}]({h.link})" if h.link else h.baslik
+                _link = h.link if news._http_url_mu(h.link or "") else ""
+                baslik = f"[{h.baslik}]({_link})" if _link else h.baslik
                 st.markdown(f"**{baslik}**")
                 st.caption(f"{h.kaynak} · {zaman}")
     st.caption("Haberler ham bilgidir; doğruluğu garanti edilmez, tavsiye değildir.")
