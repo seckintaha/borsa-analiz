@@ -149,23 +149,26 @@ Her gün otomatik (cron, hafta içi 18:30):
 Her **borsa günü** günlük özeti (AL adayları + rejim) Telegram'a gönderir.
 Kütüphane gerektirmez.
 
-Kurulum (2 dakika):
-1. Telegram'da **@BotFather**'a `/newbot` yaz → bir **token** al.
-2. Botuna bir mesaj at, sonra chat id'ni öğren:
-   `https://api.telegram.org/bot<TOKEN>/getUpdates`
-3. Ortam değişkenlerini ayarla:
+Kurulum (2 dakika — `.env` config tarafından otomatik yüklenir):
+1. `cp .env.example .env` (ilk kez) — repo ile birlikte hazır `.env` da gelir.
+2. Telegram'da **@BotFather**'a `/newbot` yaz → bir **token** al, `.env`'deki
+   `TELEGRAM_BOT_TOKEN=` satırına yapıştır.
+3. Botuna bir mesaj at, sonra chat id'ni **otomatik** bul:
 
 ```bash
-export TELEGRAM_BOT_TOKEN=123456789:ABC...
-export TELEGRAM_CHAT_ID=123456789
-python -m automation.notify        # test / tek seferlik gönderim
+python -m automation.notify --chat-id   # çıkan TELEGRAM_CHAT_ID'yi .env'e yapıştır
+python -m automation.notify             # test / tek seferlik gönderim
 ```
 
 Her borsa günü otomatik (cron, hafta içi 18:30 — tatiller veri kontrolüyle atlanır):
 
 ```
-30 18 * * 1-5  cd /yol/borsa-analiz && .venv/bin/python -m automation.notify
+30 18 * * 1-5  cd /yol/borsa-analiz && .venv/bin/python -m automation.notify >> raporlar/telegram.log 2>&1
 ```
+
+> Bu cron satırı bu makinede **zaten kurulu** (`crontab -l`). `.env`'e token +
+> chat id girer girmez çalışmaya başlar. macOS'ta Mac'in 18:30'da uyanık olması
+> ve `cron`'a Tam Disk Erişimi gerekebilir.
 
 Token yoksa "ayarlı değil" der; hafta sonu/resmî tatilde endeks veri üretmediği
 için bot otomatik susar. Panelde **⏰ Otomasyon** sekmesinden test edebilirsin.
@@ -176,7 +179,8 @@ için bot otomatik susar. Panelde **⏰ Otomasyon** sekmesinden test edebilirsin
 
 ```bash
 pip install anthropic
-export ANTHROPIC_API_KEY=sk-ant-...
+# .env içindeki ANTHROPIC_API_KEY= satırını doldur (config otomatik yükler),
+# ya da kabukta:  export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 Anahtar yoksa panel yine çalışır; o sekme "anahtar yok" diye açıkça belirtir

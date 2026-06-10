@@ -45,3 +45,31 @@ def test_gunluk_ozet_aday_yoksa():
     satirlar = [OneriSatir("CCC.IS", 30, "Zayıf / Kaçın", 20.0, -3.0, guven="düşük")]
     metin = notify.gunluk_ozet_metni(satirlar, "XU100.IS — Ayı", "2026-06-10T18:30:00")
     assert "güçlü AL adayı yok" in metin
+
+
+def test_chat_id_bul_tokensiz(monkeypatch):
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    ok, mesaj = notify.chat_id_bul()
+    assert ok is False
+    assert "Token yok" in mesaj
+
+
+def test_env_loader(tmp_path, monkeypatch):
+    """config._env_yukle: değerleri yükler, boşu atlar, mevcut env'i ezmez."""
+    import config
+    env = tmp_path / ".env"
+    env.write_text(
+        "# yorum\n"
+        'export FOO_DOLU="abc"\n'
+        "FOO_BOS=\n"
+        "FOO_VAR=onceden\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("FOO_DOLU", raising=False)
+    monkeypatch.delenv("FOO_BOS", raising=False)
+    monkeypatch.setenv("FOO_VAR", "kabuk")     # zaten tanımlı → ezilmemeli
+    config._env_yukle(str(env))
+    import os
+    assert os.environ["FOO_DOLU"] == "abc"     # yüklendi (export + tırnak temiz)
+    assert "FOO_BOS" not in os.environ         # boş değer atlandı
+    assert os.environ["FOO_VAR"] == "kabuk"    # açık ortam kazandı

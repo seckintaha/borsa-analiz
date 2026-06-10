@@ -2,6 +2,37 @@
 Merkezi ayarlar — tüm sabitler buradan yönetilir.
 """
 
+import os as _os
+
+
+# ── .env otomatik yükleme (saf stdlib, bağımlılıksız) ────────────────────────
+# Proje kökündeki `.env` dosyasını okuyup ortam değişkenlerine aktarır. Böylece
+# hem Streamlit hem cron (`python -m automation.notify`) anahtarları kendiliğinden
+# bulur; elle `set -a; source .env` yapmak gerekmez.
+# İlke: kabukta ZATEN tanımlı bir değişkenin üzerine YAZILMAZ (açık ortam kazanır).
+# Boş değerler ("ANAHTAR=") atlanır → yarım doldurulmuş .env yanlış pozitif vermez.
+def _env_yukle(yol: str) -> None:
+    try:
+        with open(yol, "r", encoding="utf-8") as f:
+            satirlar = f.readlines()
+    except OSError:
+        return
+    for ham in satirlar:
+        s = ham.strip()
+        if not s or s.startswith("#") or "=" not in s:
+            continue
+        if s.startswith("export "):
+            s = s[len("export "):]
+        anahtar, _, deger = s.partition("=")
+        anahtar = anahtar.strip()
+        deger = deger.strip().strip('"').strip("'")
+        if anahtar and deger and anahtar not in _os.environ:
+            _os.environ[anahtar] = deger
+
+
+_env_yukle(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".env"))
+
+
 # ── Veritabanı ───────────────────────────────────────────────────────────────
 DB_PATH = "borsa.db"
 

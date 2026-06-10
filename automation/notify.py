@@ -146,16 +146,55 @@ def gunluk_bildirim(db_path: str, watchlist: list[str], oneri_cfg: dict,
             "rejim": rejim_str, "metin": metin}
 
 
+def chat_id_bul(token: str | None = None, timeout: float = 10.0) -> tuple[bool, str]:
+    """
+    getUpdates ile bota mesaj atmış sohbetlerin chat id'lerini bulur. Token
+    verince kullanıcının URL'yi elle açmasına gerek kalmaz: botuna bir mesaj at,
+    sonra `python -m automation.notify --chat-id` çalıştır.
+    """
+    token = token or os.environ.get("TELEGRAM_BOT_TOKEN")
+    if not token:
+        return (False, "Token yok. Önce TELEGRAM_BOT_TOKEN ayarla (.env).")
+    url = f"https://api.telegram.org/bot{token}/getUpdates"
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as yanit:
+            sonuc = json.loads(yanit.read().decode("utf-8", errors="replace"))
+    except Exception as exc:
+        return (False, f"getUpdates hatası: {exc}")
+    if not sonuc.get("ok"):
+        return (False, f"Telegram reddetti: {sonuc.get('description', 'bilinmeyen')}")
+    bulunan = {}
+    for upd in sonuc.get("result", []):
+        sohbet = (upd.get("message") or upd.get("channel_post") or {}).get("chat", {})
+        if sohbet.get("id") is not None:
+            ad = sohbet.get("title") or sohbet.get("username") or \
+                 (f"{sohbet.get('first_name','')} {sohbet.get('last_name','')}".strip())
+            bulunan[str(sohbet["id"])] = ad or "(isimsiz)"
+    if not bulunan:
+        return (False, "Hiç mesaj görünmüyor. Botuna Telegram'dan bir mesaj atıp "
+                       "tekrar dene (eski mesajlar ~24 saat sonra düşer).")
+    satir = "\n".join(f"  TELEGRAM_CHAT_ID={cid}   # {ad}"
+                      for cid, ad in bulunan.items())
+    return (True, satir)
+
+
 def main() -> None:
     import config
     from data.storage import load_watchlist
+
+    if "--chat-id" in sys.argv:
+        ok, mesaj = chat_id_bul()
+        if ok:
+            print("Bulunan chat id'ler (.env'e yapıştır):")
+        print(mesaj)
+        return
 
     if not telegram_ayarli_mi():
         print("Telegram ayarlı değil. Ortam değişkenlerini ayarlayın:")
         print("  export TELEGRAM_BOT_TOKEN=...")
         print("  export TELEGRAM_CHAT_ID=...")
-        print("(@BotFather'dan token alın; chat id için bota mesaj atıp "
-              "getUpdates'e bakın.)")
+        print("(@BotFather'dan token alın; chat id için botuna mesaj atıp")
+        print(" `python -m automation.notify --chat-id` çalıştırın.)")
         return
 
     watchlist = load_watchlist(config.DB_PATH) or list(config.WATCHLIST)
