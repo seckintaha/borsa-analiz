@@ -83,19 +83,61 @@ def borsa_gunu_mu(son_veri_tarihi: str) -> bool:
 
 def gunluk_ozet_metni(satirlar, rejim_satiri: str, zaman: str,
                       aday_sayisi: int = 5) -> str:
-    """Skorlanmış adaylardan kısa bir Telegram özeti kurar (saf, ağ gerektirmez)."""
+    """
+    Skorlanmış adaylardan DETAYLI bir Telegram raporu kurar (saf, ağ gerektirmez).
+    Her aday için: aksiyon, skor, güven, fiyat, dönem getirisi, gerekçeler (RSI/MACD/
+    rejim), varsa ayı senaryosu ve dikkat bayrakları. Üstte tarama istatistiği.
+    """
     adaylar = [r for r in satirlar
                if r.aksiyon in ("Güçlü AL adayı", "AL adayı")][:aday_sayisi]
-    sat = [f"📊 Borsa Özeti — {zaman[:10]}", "", f"🌐 {rejim_satiri}", ""]
+    n_al = sum(1 for r in satirlar if r.aksiyon in ("Güçlü AL adayı", "AL adayı"))
+    n_izle = sum(1 for r in satirlar if r.aksiyon == "Nötr / İzle")
+    n_kacin = sum(1 for r in satirlar if r.aksiyon == "Zayıf / Kaçın")
+    n_veriyok = sum(1 for r in satirlar if getattr(r, "not_", ""))
+
+    def _fmt_fiyat(v):
+        return "—" if v is None else (f"{v:,.2f}" if abs(v) >= 1 else f"{v:.4f}")
+
+    sat = [
+        f"📊 Borsa Günlük Analiz — {zaman[:10]}",
+        "",
+        f"🌐 Piyasa: {rejim_satiri}",
+        f"📋 Taranan: {len(satirlar)} hisse · AL adayı: {n_al} · "
+        f"İzle: {n_izle} · Kaçın: {n_kacin}"
+        + (f" · veri yok: {n_veriyok}" if n_veriyok else ""),
+        "",
+    ]
+
     if adaylar:
-        sat.append("🟢 Öne çıkan adaylar:")
-        for r in adaylar:
-            sat.append(f"• {r.symbol}: skor {r.skor}/100 — {r.aksiyon} "
-                       f"(güven {r.guven})")
+        sat.append("🟢 AL ADAYLARI")
+        for i, r in enumerate(adaylar, 1):
+            isaret = "🔥" if r.aksiyon == "Güçlü AL adayı" else "⭐"
+            getiri = ("—" if r.degisim_pct is None
+                      else f"%{r.degisim_pct:+.2f}")
+            sat += [
+                "",
+                f"{i}) {isaret} {r.symbol} — {r.aksiyon}",
+                f"   📈 skor {r.skor}/100 · güven {r.guven}",
+                f"   💰 fiyat {_fmt_fiyat(r.son_fiyat)} · dönem getirisi {getiri}",
+            ]
+            for g in (r.gerekceler or []):
+                sat.append(f"   ✓ {g}")
+            for a in (getattr(r, "ayi_senaryosu", None) or []):
+                sat.append(f"   🔻 ayı senaryosu: {a}")
+            for b in (getattr(r, "bayraklar", None) or []):
+                sat.append(f"   ⚑ dikkat: {b}")
     else:
-        sat.append("🟡 Bugün güçlü AL adayı yok.")
-    sat += ["", "⚠️ Teknik taramadır, yatırım tavsiyesi değildir; sık yanılır."]
-    return "\n".join(sat)
+        sat.append("🟡 Bugün güçlü AL adayı yok — sistem temkinli.")
+
+    sat += [
+        "",
+        "━━━━━━━━━━━━━━",
+        "⚠️ Otomatik teknik taramadır, yatırım tavsiyesi DEĞİLDİR. "
+        "Skorlar geçmiş fiyat/momentuma dayanır, sık yanılır; kendi araştırmanı yap.",
+    ]
+
+    metin = "\n".join(sat)
+    return metin[:4000]            # Telegram tek mesaj sınırı (~4096)
 
 
 # ── Uçtan uca günlük bildirim ─────────────────────────────────────────────────

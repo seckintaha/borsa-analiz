@@ -36,9 +36,11 @@ def test_gunluk_ozet_metni():
     metin = notify.gunluk_ozet_metni(satirlar, "XU100.IS — Boğa",
                                      "2026-06-10T18:30:00", aday_sayisi=5)
     assert "AAA.IS" in metin and "BBB.IS" in metin
-    assert "CCC.IS" not in metin            # sadece AL adayları listelenir
+    assert "CCC.IS" not in metin            # sadece AL adayları adıyla listelenir
     assert "Boğa" in metin
-    assert "tavsiyesi değildir" in metin
+    assert "tavsiyesi DEĞİLDİR" in metin
+    assert "AL adayı: 2" in metin           # tarama istatistiği
+    assert "Kaçın: 1" in metin
 
 
 def test_gunluk_ozet_aday_yoksa():
