@@ -147,9 +147,15 @@ SOURCES = ["yfinance"]
 # Her haber kaynağa + yayın zamanına bağlıdır; veri yoksa açıkça belirtilir.
 HABER = {
     "hisse_basina_limit": 8,
+    # Türkiye odaklı, canlı doğrulanmış ekonomi/piyasa RSS akışları (saf stdlib
+    # ile okunur, ek anahtar gerektirmez). Bir akış düşerse diğerleri çalışır;
+    # hiçbiri uydurma değildir, her haber kaynağa + yayın zamanına bağlıdır.
     "rss_feeds": {
-        # "Investing TR": "https://tr.investing.com/rss/news.rss",
-        # "KAP Bildirimleri": "https://www.kap.org.tr/tr/rss/...",
+        "BloombergHT":   "https://www.bloomberght.com/rss",
+        "Investing TR":  "https://tr.investing.com/rss/news.rss",
+        "NTV Ekonomi":   "https://www.ntv.com.tr/ekonomi.rss",
+        "AA Ekonomi":    "https://www.aa.com.tr/tr/rss/default?cat=ekonomi",
+        "Dünya":         "https://www.dunya.com/rss?dunya",
     },
     "rss_basina_limit": 10,
 }
