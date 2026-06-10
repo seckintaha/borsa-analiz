@@ -164,7 +164,7 @@ _satirlar.sort(key=lambda r: -r.skor)
 print("(Rejim etkisi nötr bırakıldı; sadece teknik fark gösteriliyor)")
 for r in _satirlar:
     print(f"  {r.symbol:10} skor {r.skor:3}/100 → {r.aksiyon} (güven {r.guven})")
-_y = rec.ai_yorum(_satirlar, rejim_ozeti=macro.ozetle(rej))
-print("AI sıralı öneri:", "üretildi" if _y.ok else f"atlandı — {_y.not_}")
+print("\n--- Yerel sıralı öneri (ANAHTAR GEREKMEZ) ---")
+print(rec.yerel_yorum(_satirlar, rejim_ozeti=macro.ozetle(rej)))
 
 print("\n[Tüm değerler sentetiktir; yatırım tavsiyesi değildir.]")

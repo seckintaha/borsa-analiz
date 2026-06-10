@@ -82,3 +82,36 @@ def test_ai_yorum_anahtarsiz_graceful(monkeypatch):
     y = rec.ai_yorum(satirlar, rejim_ozeti="Boğa")
     assert y.ok is False
     assert y.not_ != ""
+
+
+# ── Yerel öneri yazarı (ANAHTAR GEREKMEZ) ─────────────────────────────────────
+
+def test_yerel_yorum_adaylari_listeler():
+    satirlar = [
+        rec.OneriSatir("AAA", 80, "Güçlü AL adayı", 100.0, 5.0,
+                       gerekceler=["RSI nötr", "MACD yukarı"],
+                       ayi_senaryosu=["beklenti yüksek olabilir"], guven="yüksek"),
+        rec.OneriSatir("BBB", 60, "AL adayı", 50.0, 2.0,
+                       gerekceler=["trend yukarı"], guven="orta"),
+        rec.OneriSatir("CCC", 30, "Zayıf / Kaçın", 20.0, -4.0,
+                       bayraklar=["ince hacim"], guven="düşük"),
+    ]
+    metin = rec.yerel_yorum(satirlar, rejim_ozeti="Boğa", en_iyi_n=6)
+    assert "AAA" in metin and "BBB" in metin
+    assert "Öne çıkan adaylar" in metin
+    assert "uzak durulacaklar" in metin.lower()
+    assert "danışmanlığı değildir" in metin
+    # Sıralama: AAA (güçlü) BBB'den önce gelmeli
+    assert metin.index("AAA") < metin.index("BBB")
+
+
+def test_yerel_yorum_aday_yok():
+    satirlar = [rec.OneriSatir("XXX", 35, "Zayıf / Kaçın", 10.0, -2.0, guven="orta")]
+    metin = rec.yerel_yorum(satirlar)
+    assert "güçlü bir AL adayı yok" in metin
+
+
+def test_yerel_yorum_dusuk_guven_uyarisi():
+    satirlar = [rec.OneriSatir("AAA", 60, "AL adayı", 100.0, 1.0, guven="düşük")]
+    metin = rec.yerel_yorum(satirlar)
+    assert "düşük" in metin and ("6 ay" in metin or "pencere" in metin)

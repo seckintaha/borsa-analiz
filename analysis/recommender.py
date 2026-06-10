@@ -179,3 +179,66 @@ def ai_yorum(satirlar: list[OneriSatir], rejim_ozeti: str = "",
     metin = _yorum_metni(satirlar, rejim_ozeti, en_iyi_n)
     return llm.cevapla(ONERI_SISTEM, metin, model=model,
                        max_tokens=max_tokens, api_key=api_key)
+
+
+# ── Yerel öneri yazarı (API ANAHTARI GEREKMEZ) ────────────────────────────────
+
+def yerel_yorum(satirlar: list[OneriSatir], rejim_ozeti: str = "",
+                en_iyi_n: int = 6) -> str:
+    """
+    Skorlanmış adaylardan, hiçbir API gerektirmeden sıralı + gerekçeli bir
+    Türkçe öneri yazısı üretir (Markdown). Her aday gerekçe + ayı senaryosu +
+    güven düzeyiyle gelir; sonunda dürüstlük notu vardır.
+    """
+    verili = [r for r in satirlar if r.aksiyon != "Veri yok"]
+    guclu = [r for r in verili if r.aksiyon == "Güçlü AL adayı"]
+    al = [r for r in verili if r.aksiyon == "AL adayı"]
+    izle = [r for r in verili if r.aksiyon == "Nötr / İzle"]
+    kacin = [r for r in verili if r.aksiyon == "Zayıf / Kaçın"]
+    adaylar = (guclu + al)[:en_iyi_n]
+
+    p = []
+    if rejim_ozeti:
+        p.append(f"**Piyasa durumu:** {rejim_ozeti}")
+        p.append("")
+
+    if adaylar:
+        p.append("### 🟢 Öne çıkan adaylar (skora göre)")
+        for i, r in enumerate(adaylar, 1):
+            satir = f"**{i}. {r.symbol}** — {r.aksiyon}, skor **{r.skor}/100**, güven: {r.guven}"
+            p.append(satir)
+            if r.gerekceler:
+                p.append(f"   - **Neden:** {'; '.join(r.gerekceler[:4])}")
+            if r.ayi_senaryosu:
+                p.append(f"   - **Ama dikkat:** {'; '.join(r.ayi_senaryosu)}")
+            if r.bayraklar:
+                p.append(f"   - ⚠️ **Bayrak:** {'; '.join(r.bayraklar)}")
+            p.append("")
+    else:
+        p.append("### 🟡 Şu an güçlü bir AL adayı yok")
+        p.append("Hiçbir hisse 'AL adayı' eşiğini geçmedi — piyasa zayıf, "
+                 "yatay ya da veri yetersiz olabilir. Bu da bir bilgidir; "
+                 "zorlama gerek yok.")
+        p.append("")
+
+    if izle:
+        adlar = ", ".join(f"{r.symbol} ({r.skor})" for r in izle[:8])
+        p.append(f"**🟡 İzleme listesi (nötr):** {adlar}")
+        p.append("")
+
+    if kacin:
+        adlar = ", ".join(f"{r.symbol} ({r.skor})" for r in kacin[:8])
+        p.append(f"**🔴 Şimdilik uzak durulacaklar:** {adlar}")
+        p.append("")
+
+    # Güven uyarısı: tüm adaylar düşük güvenliyse (ör. 1 aylık kısa pencere)
+    if adaylar and all(r.guven == "düşük" for r in adaylar):
+        p.append("> ⏳ **Not:** Tüm adayların güveni *düşük* — seçtiğin pencere "
+                 "kısa olabilir. Daha güvenilir sıralama için 6 ay / 1 yıl dene.")
+        p.append("")
+
+    p.append("---")
+    p.append("_Bu teknik bir taramadır; skorlar göstergelerin matematiksel "
+             "çıktısıdır ve **sık yanılır**. Lisanslı yatırım danışmanlığı "
+             "değildir — karar senindir._")
+    return "\n".join(p)

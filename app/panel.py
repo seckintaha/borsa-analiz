@@ -1372,26 +1372,29 @@ with tab_oneri:
             st.info("Şu an eşikleri aşan güçlü AL adayı yok — piyasa zayıf ya da "
                     "veri yetersiz olabilir. Bu da bir bilgidir.")
 
-        # AI ile sıralı öneri yazısı
+        # Sıralı öneri yazısı — ANAHTAR GEREKMEZ (yerel, anında üretilir)
         st.markdown("---")
-        st.markdown("### 🤖 AI ile sıralı öneri")
-        st.caption("Yukarıdaki skorlanmış adayları ve rejimi AI'a verir; sıralı, "
-                   "gerekçeli ve risk uyarılı bir öneri yazısı alır.")
-        if st.button("🤖 Sıralı öneriyi yaz", type="primary"):
-            with st.spinner("Claude adayları değerlendiriyor..."):
-                rejim_ozeti = macro.ozetle(_rej) if fr_e.ok and fr_e.data is not None else ""
-                y = recommender.ai_yorum(
-                    satirlar, rejim_ozeti=rejim_ozeti,
-                    en_iyi_n=config.ONERI["ai_yorum_aday"],
-                    model=config.LLM["model"])
-            if y.ok:
-                st.markdown(y.metin)
-                st.caption(f"Model: {y.model}")
-            else:
-                st.warning(y.not_)
-                if "anahtar" in y.not_ or "API" in y.not_:
-                    st.code("export ANTHROPIC_API_KEY=sk-ant-...", language="bash")
-                    st.caption("anthropic kütüphanesi gerekiyorsa: pip install anthropic")
+        st.markdown("### 📝 Sıralı öneri")
+        _rejim_ozeti = macro.ozetle(_rej) if fr_e.ok and fr_e.data is not None else ""
+        st.markdown(recommender.yerel_yorum(
+            satirlar, rejim_ozeti=_rejim_ozeti,
+            en_iyi_n=config.ONERI["ai_yorum_aday"]))
+
+        # Opsiyonel: Claude ile daha zengin yorum (anahtar varsa)
+        with st.expander("🤖 AI ile daha zengin yorum (opsiyonel — Claude anahtarı gerekir)"):
+            st.caption("Anahtarın yoksa gerek yok — yukarıdaki öneri zaten "
+                       "anahtarsız, yerel olarak üretildi.")
+            if st.button("🤖 AI yorumu yaz"):
+                with st.spinner("Claude değerlendiriyor..."):
+                    y = recommender.ai_yorum(
+                        satirlar, rejim_ozeti=_rejim_ozeti,
+                        en_iyi_n=config.ONERI["ai_yorum_aday"],
+                        model=config.LLM["model"])
+                if y.ok:
+                    st.markdown(y.metin)
+                    st.caption(f"Model: {y.model}")
+                else:
+                    st.info(y.not_)
 
     st.caption("⚠️ Skorlar ve öneriler teknik göstergelerin çıktısıdır; sık "
                "yanılır. Lisanslı yatırım danışmanlığı değildir, karar sizindir.")

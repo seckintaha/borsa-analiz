@@ -44,8 +44,9 @@ sentez, 7 makro/rejim, 10 otomasyon dahil). Çekirdek testlerle doğrulanmışt�
   tarihli Markdown rapor yazar. `python -m automation.run` veya cron ile.
 - **Öneri / Sıralama (Aşama 11):** İzleme listesini tüm göstergeler + piyasa rejimi
   + dikkat bayraklarıyla **skorlar ve sıralar**; en üstte en güçlü **"AL adayları"**.
-  İstersen AI tüm bağlamı okuyup **sıralı, gerekçeli** bir öneri yazısı yazar. Her
-  öneri **gerekçe + ayı senaryosu + güven düzeyiyle** gelir; doğrudan ama şeffaftır.
+  Sıralı + gerekçeli öneri yazısı **API anahtarı GEREKMEDEN** yerel olarak üretilir
+  (Claude'lu zengin yorum opsiyoneldir). Her öneri **gerekçe + ayı senaryosu + güven
+  düzeyiyle** gelir; doğrudan ama şeffaftır.
 
 ## Hızlı demo (canlı veri gerektirmez)
 
@@ -116,7 +117,7 @@ borsa-analiz/
     ├── test_stages2.py    # Aşama 4-6-7-10 testleri
     ├── test_data.py       # veri dayanıklılığı testleri
     ├── test_security.py   # güvenlik testleri
-    └── test_recommender.py# Aşama 11 öneri/sıralama testleri (toplam 55 test)
+    └── test_recommender.py# Aşama 11 öneri/sıralama testleri (toplam 58 test)
 ```
 
 ## Ayarlar
