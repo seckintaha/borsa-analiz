@@ -105,6 +105,42 @@ def get_prices(db_path: str, symbol: str) -> Optional[pd.DataFrame]:
     return df.set_index("date")
 
 
+def get_prices_fetchresult(db_path: str, symbol: str, bayat_gun: int = 7):
+    """
+    DB'deki kayıtlı fiyatları FetchResult olarak döndürür (offline yedek).
+    Kolonlar OHLCV (Title Case) yapılır; kaynak "cache (DB)" işaretlenir.
+    Canlı veri başarısızsa son bilinen veriyle devam etmek için kullanılır.
+    """
+    from data.fetcher import FetchResult, bayat_mi, _now_iso
+    symbol = symbol.strip().upper()
+    df = get_prices(db_path, symbol)
+    if df is None or df.empty:
+        return FetchResult(symbol, None, "cache (DB)", _now_iso(), ok=False,
+                           note="DB önbelleğinde de kayıt yok")
+
+    fetched_at_kayit = ""
+    if "fetched_at" in df:
+        try:
+            fetched_at_kayit = str(df["fetched_at"].iloc[-1])
+        except Exception:
+            fetched_at_kayit = ""
+
+    ohlcv = df[["open", "high", "low", "close", "volume"]].rename(columns={
+        "open": "Open", "high": "High", "low": "Low",
+        "close": "Close", "volume": "Volume"})
+
+    bayat, son_tarih, gun_farki = bayat_mi(ohlcv, bayat_gun)
+    uyarilar = [f"canlı veri alınamadı — DB önbelleğinden gösteriliyor "
+                f"(son kayıt {son_tarih}, {gun_farki} gün önce)"]
+    return FetchResult(
+        symbol, ohlcv, "cache (DB)", _now_iso(), ok=True,
+        note="DB önbelleği (offline yedek)",
+        bayat=True, uyarilar=uyarilar,
+        meta={"satir": len(ohlcv), "adjusted": True, "son_tarih": son_tarih,
+              "gun_farki": gun_farki, "ilk_kayit_zamani": fetched_at_kayit},
+    )
+
+
 def log_event(db_path: str, ts: str, symbol: str, kind: str,
               detail: str, source: str = "") -> None:
     with _connect(db_path) as conn:

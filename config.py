@@ -109,3 +109,49 @@ HISTORICAL = {
 
 # ── Veri kaynağı ──────────────────────────────────────────────────────────────
 SOURCES = ["yfinance"]
+
+# ── Aşama 4: KAP & Haber ──────────────────────────────────────────────────────
+# Hisse haberleri yfinance üzerinden çekilir (ek anahtar gerekmez).
+# Genel piyasa/KAP akışı için aşağıya RSS adresi ekleyin (ad: URL). Boşsa atlanır.
+# Her haber kaynağa + yayın zamanına bağlıdır; veri yoksa açıkça belirtilir.
+HABER = {
+    "hisse_basina_limit": 8,
+    "rss_feeds": {
+        # "Investing TR": "https://tr.investing.com/rss/news.rss",
+        # "KAP Bildirimleri": "https://www.kap.org.tr/tr/rss/...",
+    },
+    "rss_basina_limit": 10,
+}
+
+# ── Aşama 7: Makro / Piyasa Rejimi ────────────────────────────────────────────
+MACRO = {
+    "rejim_endeksi":      "XU100.IS",  # rejim bu endeksten okunur
+    "oynaklik_penceresi": 20,          # gün — gerçekleşen oynaklık penceresi
+    "yatay_band_pct":     5.0,         # fiyat 200g ort.'a bu kadar yakınsa "yatay"
+    "yuksek_oynaklik_p":  75,          # yıllık oynaklık bu persentilin üstündeyse "yüksek"
+    "dusuk_oynaklik_p":   25,          # altındaysa "düşük"
+}
+
+# ── Aşama 6: LLM Sentez (Claude) ──────────────────────────────────────────────
+# Deterministik modüllerin (sinyal/tarihsel/rejim/kalibrasyon) çıktısını
+# dengeli bir Türkçe özete çevirir. Yeni veri UYDURMAZ, AL/SAT tavsiyesi VERMEZ.
+# Çalışması için ortam değişkeni: ANTHROPIC_API_KEY. Yoksa açıkça belirtilir.
+LLM = {
+    "model":      "claude-opus-4-8",
+    "max_tokens": 2000,
+    "etkin":      True,
+}
+
+# ── Aşama 10: Otomasyon ───────────────────────────────────────────────────────
+OTOMASYON = {
+    "rapor_klasoru": "raporlar",
+}
+
+# ── Veri dayanıklılığı (yfinance sınırları + BIST düzeltmeleri) ────────────────
+VERI = {
+    "max_deneme":      3,      # geçici hata/hız limitinde kaç kez yeniden denensin
+    "bekleme_sn":      1.5,    # denemeler arası taban bekleme (üstel artar)
+    "bayat_gun":       7,      # son veri bu kadar günden eskiyse "bayat" (delisting/tatil)
+    "bosluk_gun":      10,     # ardışık veri boşluğu bu kadar günü aşarsa uyar
+    "db_yedek":        True,   # canlı veri başarısızsa DB önbelleğinden devam et
+}

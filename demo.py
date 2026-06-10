@@ -21,6 +21,9 @@ from backtest.engine import backtest, train_test_bol, strateji_sma_kesisim
 from analysis.historical import olay_calismasi, ozetle
 from analysis.calibration import Tahmin, gercek_ekle, kalibre_et, genel_ozet
 from analysis import risk
+from analysis import macro, news, llm
+from analysis.screener import ScreenRow
+from automation.scheduler import rapor_metni
 
 
 def sentetik(n=500, egim=0.25, seed=7):
@@ -87,5 +90,53 @@ print("Stop-loss :", risk.stop_loss_kontrol({"X": {"alis_fiyat": 100}}, {"X": 90
                                             config.RISK["stop_loss_pct"]) or "uyarı yok")
 print("Pozisyon büyüklüğü (250 TL fiyat):",
       risk.pozisyon_buyuklugu(config.INITIAL_CAPITAL, 250, config.RISK["pozisyon_pct"]))
+
+cizgi("AŞAMA 7 — PİYASA REJİMİ")
+# Yukselen sentetik seri → Boga beklenir
+rej_df = sentetik(n=300, egim=0.4, seed=5)
+rej = macro.rejim_tespit(rej_df)
+print(macro.ozetle(rej))
+for n in rej.notlar:
+    print("  •", n)
+breadth = macro.piyasa_genisligi({
+    "A": sentetik(egim=0.5, seed=1)["Close"],
+    "B": sentetik(egim=-0.5, seed=2)["Close"],
+    "C": sentetik(egim=0.3, seed=3)["Close"],
+}, pencere=50)
+print(f"Piyasa genişliği: {breadth['ustte']}/{breadth['toplam']} hisse "
+      f"50g ortalamasının üzerinde")
+
+cizgi("AŞAMA 4 — HABER & KAP (offline RSS ayrıştırma)")
+RSS = """<?xml version="1.0"?><rss version="2.0"><channel>
+  <item><title>Şirket X bilanço açıkladı</title>
+    <link>https://ornek.test/1</link>
+    <pubDate>Mon, 08 Jun 2026 10:00:00 GMT</pubDate></item>
+  <item><title>Piyasa yatay kapattı</title>
+    <link>https://ornek.test/2</link>
+    <pubDate>Mon, 08 Jun 2026 17:00:00 GMT</pubDate></item>
+</channel></rss>"""
+for h in news._rss_ayristir(RSS, "Demo Akışı", limit=10):
+    print(f"  • {h.baslik}  ({h.kaynak}, {h.zaman[:16]})")
+print("(Canlı hisse haberi için: news.hisse_haberleri('AAPL') — yfinance.)")
+
+cizgi("AŞAMA 6 — LLM SENTEZ (deterministik çıktıların özeti)")
+baglam = {
+    "symbol": "DEMO.IS", "fiyat": 142.5,
+    "sinyal_ozet": rej.rejim, "sinyal_notlar": rej.notlar[:2],
+    "rejim": macro.ozetle(rej),
+}
+print("Claude'a gidecek baglam (ozet):")
+print("  " + llm.baglam_metni(baglam).splitlines()[0])
+sonuc = llm.sentezle(baglam)   # anahtar yoksa uydurmaz, durumu söyler
+print("Sentez sonucu:", "üretildi" if sonuc.ok else f"atlandı — {sonuc.not_}")
+
+cizgi("AŞAMA 10 — OTOMASYON (offline rapor kurma)")
+rows = [
+    ScreenRow("AAA.IS", 100.0, 6.5, 2.0, 72,
+              gerekceler=["yükseldi +6.5%", "RSI yüksek (72)"]),
+    ScreenRow("BBB.IS", 50.0, 0.2, 1.0, 50, gerekceler=[]),
+]
+print(rapor_metni(rows, "XU100.IS — " + macro.ozetle(rej), "2026-06-08"))
+print("\n(Canlı tarama + dosyaya yazma için: python -m automation.run)")
 
 print("\n[Tüm değerler sentetiktir; yatırım tavsiyesi değildir.]")

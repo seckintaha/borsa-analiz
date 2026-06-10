@@ -7,6 +7,9 @@ secrets.toml
 # Veritabani
 *.db
 
+# Otomasyon ciktilari (Asama 10)
+raporlar/
+
 # Python
 __pycache__/
 *.py[cod]
