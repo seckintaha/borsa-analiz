@@ -79,14 +79,36 @@ def borsa_gunu_mu(son_veri_tarihi: str) -> bool:
     return son_veri_tarihi == datetime.now().strftime("%Y-%m-%d")
 
 
+def veri_taze_mi(son_veri_tarihi: str, max_gun: int = 4) -> bool:
+    """
+    Gün-içi mod için: en yeni bar son `max_gun` gün içindeyse veri 'taze' sayılır.
+    Hafta sonu/uzun tatilde bar eskir → False (bot susar). EOD modundaki katı
+    'tam bugün' kuralı yerine, gün içinde (bugünün barı henüz kapanmamışken)
+    da çalışabilmek için gevşek kontrol.
+    """
+    if not son_veri_tarihi:
+        return False
+    try:
+        d = datetime.strptime(son_veri_tarihi[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return False
+    fark = (datetime.now().date() - d).days
+    return 0 <= fark <= max_gun
+
+
 # ── Günlük özet metni ─────────────────────────────────────────────────────────
 
 def gunluk_ozet_metni(satirlar, rejim_satiri: str, zaman: str,
-                      aday_sayisi: int = 5) -> str:
+                      aday_sayisi: int = 5, son_veri_tarihi: str = "",
+                      basliklar=None, baslik: str = "📊 Borsa Günlük Analiz") -> str:
     """
     Skorlanmış adaylardan DETAYLI bir Telegram raporu kurar (saf, ağ gerektirmez).
     Her aday için: aksiyon, skor, güven, fiyat, dönem getirisi, gerekçeler (RSI/MACD/
-    rejim), varsa ayı senaryosu ve dikkat bayrakları. Üstte tarama istatistiği.
+    rejim), varsa ayı senaryosu ve dikkat bayrakları. Üstte tarama istatistiği +
+    veri tazeliği; altta (verilirse) günün öne çıkan haber başlıkları.
+
+    son_veri_tarihi: kullanılan en yeni fiyat barının tarihi (şeffaflık için).
+    basliklar: (kaynak, başlık) çiftleri — günün haber başlıkları (opsiyonel).
     """
     adaylar = [r for r in satirlar
                if r.aksiyon in ("Güçlü AL adayı", "AL adayı")][:aday_sayisi]
@@ -98,10 +120,17 @@ def gunluk_ozet_metni(satirlar, rejim_satiri: str, zaman: str,
     def _fmt_fiyat(v):
         return "—" if v is None else (f"{v:,.2f}" if abs(v) >= 1 else f"{v:.4f}")
 
+    zaman_etiket = zaman[:16].replace("T", " ")
     sat = [
-        f"📊 Borsa Günlük Analiz — {zaman[:10]}",
+        f"{baslik} — {zaman_etiket}",
         "",
         f"🌐 Piyasa: {rejim_satiri}",
+    ]
+    if son_veri_tarihi:
+        taze = " (bugün ✅)" if son_veri_tarihi == datetime.now().strftime("%Y-%m-%d") \
+               else " ⚠️ bugünün barı henüz yok"
+        sat.append(f"📅 Kullanılan veri: {son_veri_tarihi}{taze}")
+    sat += [
         f"📋 Taranan: {len(satirlar)} hisse · AL adayı: {n_al} · "
         f"İzle: {n_izle} · Kaçın: {n_kacin}"
         + (f" · veri yok: {n_veriyok}" if n_veriyok else ""),
@@ -129,6 +158,11 @@ def gunluk_ozet_metni(satirlar, rejim_satiri: str, zaman: str,
     else:
         sat.append("🟡 Bugün güçlü AL adayı yok — sistem temkinli.")
 
+    if basliklar:
+        sat += ["", "📰 Günün başlıkları:"]
+        for kaynak, bas in basliklar[:5]:
+            sat.append(f"• {bas[:90]}  —{kaynak}")
+
     sat += [
         "",
         "━━━━━━━━━━━━━━",
@@ -143,9 +177,12 @@ def gunluk_ozet_metni(satirlar, rejim_satiri: str, zaman: str,
 # ── Uçtan uca günlük bildirim ─────────────────────────────────────────────────
 
 def gunluk_bildirim(db_path: str, watchlist: list[str], oneri_cfg: dict,
-                    screen_cfg: dict, macro_cfg: dict, tg_cfg: dict) -> dict:
+                    screen_cfg: dict, macro_cfg: dict, tg_cfg: dict,
+                    mod: str = "eod", haber_cfg: dict | None = None) -> dict:
     """
-    Borsa günüyse: tara → rejim oku → AL adaylarını Telegram'a gönder.
+    Borsa günüyse: tara → rejim oku → haber çek → AL adaylarını Telegram'a gönder.
+    mod="eod": gün sonu (18:30), bugünün barı oluşmuş olmalı (katı).
+    mod="gunici": gün içi (örn. 13:00), veri son birkaç gün içindeyse gönderir.
     Dönüş: durum sözlüğü (gonderildi, neden, ...).
     """
     from data.access import veri_getir
@@ -161,9 +198,11 @@ def gunluk_bildirim(db_path: str, watchlist: list[str], oneri_cfg: dict,
     fr = veri_getir(db_path, endeks, period="2y", interval="1d")
     son_tarih = fr.meta.get("son_tarih", "") if fr.ok else ""
 
-    if tg_cfg.get("sadece_borsa_gunu", True) and not borsa_gunu_mu(son_tarih):
-        return {"gonderildi": False,
-                "neden": f"borsa günü değil / veri taze değil (son veri: {son_tarih or 'yok'})"}
+    if tg_cfg.get("sadece_borsa_gunu", True):
+        taze = veri_taze_mi(son_tarih) if mod == "gunici" else borsa_gunu_mu(son_tarih)
+        if not taze:
+            return {"gonderildi": False,
+                    "neden": f"borsa günü değil / veri taze değil (son veri: {son_tarih or 'yok'})"}
 
     rejim_str = ""
     if fr.ok and fr.data is not None:
@@ -177,12 +216,28 @@ def gunluk_bildirim(db_path: str, watchlist: list[str], oneri_cfg: dict,
     satirlar = rec.oneri_tara(watchlist, oneri_cfg,
                               thin_volume=screen_cfg["thin_volume"],
                               rejim=rejim, period=oneri_cfg["varsayilan_periyot"])
+
+    # Günün haber başlıkları (opsiyonel; akış yoksa sessizce atlanır)
+    basliklar = []
+    if haber_cfg and haber_cfg.get("rss_feeds"):
+        try:
+            from analysis import news
+            hr = news.piyasa_akisi(dict(haber_cfg["rss_feeds"]),
+                                   limit=haber_cfg.get("rss_basina_limit", 10))
+            if hr.ok:
+                basliklar = [(k.kaynak, k.baslik) for k in hr.kayitlar[:5]]
+        except Exception:
+            basliklar = []
+
+    baslik = "📊 Borsa Günlük Analiz" if mod == "eod" else "⏱️ Borsa Gün-İçi Analiz"
     metin = gunluk_ozet_metni(satirlar, rejim_str, zaman,
-                              aday_sayisi=tg_cfg.get("ozet_aday_sayisi", 5))
+                              aday_sayisi=tg_cfg.get("ozet_aday_sayisi", 5),
+                              son_veri_tarihi=son_tarih, basliklar=basliklar,
+                              baslik=baslik)
 
     ok, hata = telegram_gonder(metin)
     log_event(db_path, zaman, symbol="", kind="telegram_bildirim",
-              detail=("gönderildi" if ok else f"başarısız: {hata}"),
+              detail=(f"{mod} gönderildi" if ok else f"{mod} başarısız: {hata}"),
               source="telegram")
     return {"gonderildi": ok, "neden": hata if not ok else "",
             "rejim": rejim_str, "metin": metin}
@@ -239,14 +294,16 @@ def main() -> None:
         print(" `python -m automation.notify --chat-id` çalıştırın.)")
         return
 
+    mod = "gunici" if "--gunici" in sys.argv else "eod"
     watchlist = load_watchlist(config.DB_PATH) or list(config.WATCHLIST)
     sonuc = gunluk_bildirim(
         db_path=config.DB_PATH, watchlist=watchlist,
         oneri_cfg=config.ONERI, screen_cfg=config.SCREEN,
-        macro_cfg=config.MACRO, tg_cfg=config.TELEGRAM)
+        macro_cfg=config.MACRO, tg_cfg=config.TELEGRAM,
+        mod=mod, haber_cfg=getattr(config, "HABER", None))
 
     if sonuc["gonderildi"]:
-        print("✅ Telegram bildirimi gönderildi.")
+        print(f"✅ Telegram bildirimi gönderildi ({mod}).")
         print(sonuc["rejim"])
     else:
         print(f"ℹ️ Gönderilmedi: {sonuc['neden']}")

@@ -87,6 +87,37 @@ def test_piyasa_akisi_bos_yapilandirma():
     assert "yapılandırılmamış" in r.not_
 
 
+def test_tam_kelime_eslesme():
+    # "thy" tam kelime → eşleşir; "timothy" içindeki "thy" → eşleşMEZ
+    assert news._tam_kelime_var(news._tr_kucult("THY rekor kırdı"), "thy") is True
+    assert news._tam_kelime_var(news._tr_kucult("Timothy Chou hisse"), "thy") is False
+    assert news._tam_kelime_var(news._tr_kucult("Türk Hava Yolları"),
+                                "türk hava yolları") is True
+
+
+def test_hisse_haberleri_tr_filtreler(monkeypatch):
+    """BIST haberi Türkçe akıştan şirket adıyla süzülür; yanlış pozitif elenir."""
+    sahte = news.HaberSonuc(True, kayitlar=[
+        news.HaberKaydi("THY yeni uçak siparişi verdi", "AA", "", "https://x/1"),
+        news.HaberKaydi("Timothy Cook açıklama yaptı", "X", "", "https://x/2"),
+        news.HaberKaydi("Borsa yatay seyretti", "X", "", "https://x/3"),
+    ])
+    monkeypatch.setattr(news, "piyasa_akisi", lambda *a, **k: sahte)
+    r = news.hisse_haberleri_tr("THYAO.IS", {"AA": "http://x"}, limit=5)
+    assert r.ok is True
+    assert len(r.kayitlar) == 1                       # sadece THY haberi
+    assert "THY" in r.kayitlar[0].baslik
+    assert r.kayitlar[0].saglayici == "rss-tr"
+
+    # Eşleşme yoksa dürüstçe ok=False
+    bos = news.HaberSonuc(True, kayitlar=[
+        news.HaberKaydi("Alakasız haber", "X", "", "https://x/9")])
+    monkeypatch.setattr(news, "piyasa_akisi", lambda *a, **k: bos)
+    r2 = news.hisse_haberleri_tr("GARAN.IS", {"AA": "http://x"}, limit=5)
+    assert r2.ok is False
+    assert "bulunamadı" in r2.not_
+
+
 # ── Aşama 6: LLM Sentez (graceful, anahtarsız) ────────────────────────────────
 
 def test_baglam_metni_icerik():

@@ -113,6 +113,103 @@ def hisse_haberleri(symbol: str, limit: int = 8) -> HaberSonuc:
     return HaberSonuc(True, kayitlar=kayitlar, fetched_at=fetched_at)
 
 
+# ── BIST hissesine özel haber (Türkçe RSS akışlarından, sembol-filtreli) ──────
+
+# BIST sembol kodu → haber metninde aranacak anahtar kelimeler (şirket adları).
+# Amaç: yfinance'ın BIST için verdiği ABD-odaklı/boş haberi bırakıp, Türkçe
+# akışlardan o şirketle ilgili GERÇEK haberleri eşleştirmek. Eşleşme yoksa
+# dürüstçe "haber yok" denir — asla uydurulmaz.
+BIST_ISIM: dict = {
+    "THYAO": ["Türk Hava Yolları", "THY", "Turkish Airlines"],
+    "GARAN": ["Garanti BBVA", "Garanti Bankası", "Garanti"],
+    "AKBNK": ["Akbank"],
+    "YKBNK": ["Yapı Kredi"],
+    "ISCTR": ["İş Bankası", "Türkiye İş Bankası"],
+    "HALKB": ["Halkbank", "Halk Bankası"],
+    "VAKBN": ["VakıfBank", "Vakıflar Bankası"],
+    "ASELS": ["Aselsan"],
+    "EREGL": ["Ereğli Demir Çelik", "Erdemir"],
+    "PETKM": ["Petkim"],
+    "TUPRS": ["Tüpraş"],
+    "AKSEN": ["Aksa Enerji"],
+    "ARCLK": ["Arçelik"],
+    "VESTL": ["Vestel"],
+    "PGSUS": ["Pegasus"],
+    "TAVHL": ["TAV Havalimanları", "TAV"],
+    "TOASO": ["Tofaş"],
+    "FROTO": ["Ford Otosan", "Ford Otomotiv"],
+    "TTKOM": ["Türk Telekom"],
+    "TCELL": ["Turkcell"],
+    "BIMAS": ["BİM"],
+    "MGROS": ["Migros"],
+    "ULKER": ["Ülker"],
+    "SOKM": ["Şok Marketler", "ŞOK"],
+    "KCHOL": ["Koç Holding"],
+    "SAHOL": ["Sabancı Holding"],
+    "SISE": ["Şişecam"],
+    "SASA": ["Sasa Polyester", "Sasa"],
+    "KOZAL": ["Koza Altın"],
+    "KOZAA": ["Koza Anadolu"],
+    "EKGYO": ["Emlak Konut"],
+    "ENKAI": ["Enka İnşaat", "Enka"],
+    "OYAKC": ["Oyak Çimento"],
+    "HEKTS": ["Hektaş"],
+    "GUBRF": ["Gübre Fabrikaları", "Gübretaş"],
+}
+
+
+def _tr_kucult(s: str) -> str:
+    """Türkçe-duyarlı küçük harf (I→ı, İ→i) — eşleştirmeyi güvenli yapar."""
+    return s.replace("I", "ı").replace("İ", "i").lower()
+
+
+# Türkçe dahil harfler — anahtar kelime "tam kelime" olarak eşleşmeli ki
+# "THY" → "Timothy" gibi yanlış pozitifler olmasın.
+import re as _re
+_HARF = "a-zàâçéèêîôû0-9ığüşöçâîû"
+
+
+def _tam_kelime_var(metin: str, anahtar: str) -> bool:
+    """anahtar, metinde tam kelime olarak (harf sınırlarıyla) geçiyor mu?"""
+    desen = rf"(?<![{_HARF}]){_re.escape(anahtar)}(?![{_HARF}])"
+    return _re.search(desen, metin) is not None
+
+
+def hisse_haberleri_tr(symbol: str, rss_feeds: dict, limit: int = 8,
+                       tarama_limit: int = 15) -> HaberSonuc:
+    """
+    BIST hissesi için Türkçe RSS akışlarından, şirket adıyla EŞLEŞEN haberleri
+    süzer. yfinance yerine yerel/Türkçe kaynak kullanır. Eşleşme yoksa
+    ok=False ("güncel haber bulunamadı") — boşluk uydurulmaz.
+    """
+    fetched_at = _now_iso()
+    kod = symbol.strip().upper().replace(".IS", "")
+    anahtarlar = [kod] + BIST_ISIM.get(kod, [])
+    al = [_tr_kucult(a) for a in anahtarlar]
+
+    r = piyasa_akisi(rss_feeds, limit=tarama_limit)
+    if not r.ok:
+        return HaberSonuc(False, fetched_at=fetched_at,
+                          not_=f"Türkçe akış okunamadı: {r.not_}")
+
+    secilen = []
+    for k in r.kayitlar:
+        metin = _tr_kucult(f"{k.baslik} {k.ozet}")
+        if any(_tam_kelime_var(metin, a) for a in al):
+            kk = HaberKaydi(baslik=k.baslik, kaynak=k.kaynak, zaman=k.zaman,
+                            link=k.link, symbol=kod, ozet=k.ozet,
+                            saglayici="rss-tr")
+            secilen.append(kk)
+        if len(secilen) >= limit:
+            break
+
+    if not secilen:
+        return HaberSonuc(False, fetched_at=fetched_at,
+                          not_=f"'{kod}' için Türkçe kaynaklarda güncel haber "
+                               "bulunamadı (her gün her hisseye haber çıkmaz).")
+    return HaberSonuc(True, kayitlar=secilen, fetched_at=fetched_at)
+
+
 # ── Genel / KAP akışı (RSS, saf stdlib) ───────────────────────────────────────
 
 def _rss_ayristir(xml_metni: str, feed_adi: str, limit: int) -> list[HaberKaydi]:

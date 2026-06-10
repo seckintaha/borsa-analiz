@@ -1050,6 +1050,11 @@ def _coklu_close(wl_key: str) -> dict:
 
 @st.cache_data(ttl=600)
 def _hisse_haber(symbol: str, limit: int):
+    # BIST (.IS) → Türkçe RSS akışlarından sembol-filtreli haber (yfinance ABD
+    # odaklı/boş döndürüyor). Diğer borsalar (AAPL vb.) → yfinance.
+    if symbol.strip().upper().endswith(".IS") and config.HABER["rss_feeds"]:
+        return news.hisse_haberleri_tr(symbol, dict(config.HABER["rss_feeds"]),
+                                       limit=limit)
     return news.hisse_haberleri(symbol, limit=limit)
 
 @st.cache_data(ttl=600)
@@ -1123,10 +1128,11 @@ with tab_haber:
     st.markdown("## 📰 Haber & KAP")
     with st.expander("Bu sekme ne işe yarar?"):
         st.markdown(
-            "Seçili hissenin **son haberlerini** (yfinance) ve config'e "
-            "eklediğiniz **RSS/KAP akışlarını** gösterir. Her haber kaynağa ve "
-            "yayın zamanına bağlıdır; veri yoksa açıkça belirtilir. Haberler ham "
-            "bilgidir, hiçbiri yatırım tavsiyesi değildir."
+            "Seçili hissenin **son haberlerini** ve config'e eklediğiniz "
+            "**RSS/KAP akışlarını** gösterir. BIST (.IS) hisseleri için haberler "
+            "**Türkçe kaynaklardan** şirket adıyla eşleştirilir (yabancı hisseler "
+            "yfinance'tan). Her haber kaynağa ve yayın zamanına bağlıdır; veri "
+            "yoksa açıkça belirtilir. Haberler ham bilgidir, tavsiye değildir."
         )
 
     st.markdown(f"### {sym or '—'} ile ilgili haberler" if sym else "### Hisse haberleri")
