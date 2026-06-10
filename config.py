@@ -147,6 +147,18 @@ OTOMASYON = {
     "rapor_klasoru": "raporlar",
 }
 
+# ── Aşama 12: Telegram bildirim botu ──────────────────────────────────────────
+# Günlük özet (AL adayları + rejim) Telegram'a gönderilir.
+# Anahtarlar ortam değişkeninden okunur (yoksa "ayarlı değil" der):
+#   TELEGRAM_BOT_TOKEN  — @BotFather'dan alınır
+#   TELEGRAM_CHAT_ID    — bota mesaj atıp öğrenilir
+# "sadece_borsa_gunu": endeks bugün veri ürettiyse (borsa açıksa) gönderir;
+# hafta sonu/resmî tatilde veri gelmediği için bot otomatik susar.
+TELEGRAM = {
+    "sadece_borsa_gunu": True,
+    "ozet_aday_sayisi":  5,    # bildirimde en fazla kaç AL adayı listelensin
+}
+
 # ── Aşama 11: Öneri / Tarama Sıralaması ───────────────────────────────────────
 # İzleme listesini skorlar ve "AL adayı / İzle / Kaçın" olarak SIRALAR.
 # Skor şeffaftır: sinyal puanı + piyasa rejimi + dikkat bayrakları.

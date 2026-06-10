@@ -75,7 +75,8 @@ veri katmanı I/O'yu yönetir. Bu ayrım sayesinde testler internet olmadan çal
 | `analysis/calibration.py` | 8 | Tahminleri gerçeğe karşı puanlar (yazı-tura kıyası) |
 | `analysis/risk.py` | 9 | Pozisyon büyüklüğü, yoğunlaşma, stop-loss, korelasyon |
 | `automation/scheduler.py` | 10 | Tara → rejim oku → tarihli Markdown rapor |
-| `analysis/recommender.py` | 11 | Şeffaf skorlama + sıralama (AL adayları) + AI yorum |
+| `analysis/recommender.py` | 11 | Şeffaf skorlama + sıralama (AL adayları) + AI/yerel yorum |
+| `automation/notify.py` | 12 | Telegram bot — borsa günü günlük özet (veri-temelli takvim) |
 | `app/panel.py` | — | 14 sekmeli Streamlit arayüzü |
 
 Tüm sabitler `config.py`'de — kodun içine gömülü değer yoktur.

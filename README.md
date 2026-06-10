@@ -1,8 +1,8 @@
 # Borsa Analiz & Takip Sistemi
 
 Global + BIST hisseleri için takip, teknik analiz ve gün sonu tarama sistemi.
-Bu depo, projenin **Aşama 0–11** modüllerini içerir (Aşama 4 haber/KAP, 6 LLM
-sentez, 7 makro/rejim, 10 otomasyon, 11 öneri dahil). Çekirdek testlerle doğrulanmıştır.
+Bu depo, projenin **Aşama 0–12** modüllerini içerir (Aşama 4 haber/KAP, 6 LLM
+sentez, 7 makro/rejim, 10 otomasyon, 11 öneri, 12 Telegram bot dahil). Çekirdek testlerle doğrulanmıştır.
 
 > **Önemli:** Bu bir karar **destek** aracıdır, kâhin değildir. Hiçbir çıktısı
 > yatırım tavsiyesi değildir. Üretilen sinyaller teknik göstergelerin matematiksel
@@ -47,6 +47,9 @@ sentez, 7 makro/rejim, 10 otomasyon, 11 öneri dahil). Çekirdek testlerle doğr
   Sıralı + gerekçeli öneri yazısı **API anahtarı GEREKMEDEN** yerel olarak üretilir
   (Claude'lu zengin yorum opsiyoneldir). Her öneri **gerekçe + ayı senaryosu + güven
   düzeyiyle** gelir; doğrudan ama şeffaftır.
+- **Telegram bot (Aşama 12):** Her **borsa günü** günlük özeti (AL adayları + rejim)
+  Telegram'a gönderir. Kütüphane gerektirmez; hafta sonu/tatilde endeks veri
+  üretmediği için bot **otomatik susar**. Token yoksa "ayarlı değil" der.
 
 ## Hızlı demo (canlı veri gerektirmez)
 
@@ -108,7 +111,8 @@ borsa-analiz/
 │   └── engine.py          # Aşama 3: backtest motoru
 ├── automation/
 │   ├── scheduler.py       # Aşama 10: tara → rejim → rapor
-│   └── run.py             # `python -m automation.run`
+│   ├── run.py             # `python -m automation.run`
+│   └── notify.py          # Aşama 12: Telegram bot (`python -m automation.notify`)
 ├── app/
 │   └── panel.py           # Streamlit arayüz (14 sekme)
 └── tests/
@@ -117,7 +121,8 @@ borsa-analiz/
     ├── test_stages2.py    # Aşama 4-6-7-10 testleri
     ├── test_data.py       # veri dayanıklılığı testleri
     ├── test_security.py   # güvenlik testleri
-    └── test_recommender.py# Aşama 11 öneri/sıralama testleri (toplam 58 test)
+    ├── test_recommender.py# Aşama 11 öneri/sıralama testleri
+    └── test_notify.py     # Aşama 12 Telegram bot testleri (toplam 63 test)
 ```
 
 ## Ayarlar
@@ -138,6 +143,32 @@ Her gün otomatik (cron, hafta içi 18:30):
 ```
 30 18 * * 1-5  cd /yol/borsa-analiz && .venv/bin/python -m automation.run
 ```
+
+## Telegram bildirim botu (Aşama 12)
+
+Her **borsa günü** günlük özeti (AL adayları + rejim) Telegram'a gönderir.
+Kütüphane gerektirmez.
+
+Kurulum (2 dakika):
+1. Telegram'da **@BotFather**'a `/newbot` yaz → bir **token** al.
+2. Botuna bir mesaj at, sonra chat id'ni öğren:
+   `https://api.telegram.org/bot<TOKEN>/getUpdates`
+3. Ortam değişkenlerini ayarla:
+
+```bash
+export TELEGRAM_BOT_TOKEN=123456789:ABC...
+export TELEGRAM_CHAT_ID=123456789
+python -m automation.notify        # test / tek seferlik gönderim
+```
+
+Her borsa günü otomatik (cron, hafta içi 18:30 — tatiller veri kontrolüyle atlanır):
+
+```
+30 18 * * 1-5  cd /yol/borsa-analiz && .venv/bin/python -m automation.notify
+```
+
+Token yoksa "ayarlı değil" der; hafta sonu/resmî tatilde endeks veri üretmediği
+için bot otomatik susar. Panelde **⏰ Otomasyon** sekmesinden test edebilirsin.
 
 ## AI Sentez (Aşama 6) için anahtar
 

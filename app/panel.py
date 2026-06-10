@@ -1282,6 +1282,47 @@ with tab_otomasyon:
     )
     st.caption("Komut satırından: `python -m automation.run`")
 
+    # ── Telegram bildirim botu (Aşama 12) ────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 📲 Telegram bildirim botu")
+    from automation import notify as _notify
+
+    if _notify.telegram_ayarli_mi():
+        st.success("✅ Telegram ayarlı.")
+        cta, ctb = st.columns(2)
+        if cta.button("✉️ Test mesajı gönder"):
+            ok, hata = _notify.telegram_gonder(
+                "✅ Borsa Analiz: test mesajı. Bot çalışıyor.")
+            st.success("Gönderildi!") if ok else st.error(hata)
+        if ctb.button("📊 Günlük özeti şimdi gönder"):
+            with st.spinner("Taranıyor ve gönderiliyor..."):
+                sonuc = _notify.gunluk_bildirim(
+                    DB, watchlist, config.ONERI, config.SCREEN,
+                    config.MACRO, config.TELEGRAM)
+            if sonuc["gonderildi"]:
+                st.success("Günlük özet Telegram'a gönderildi.")
+                st.code(sonuc["metin"])
+            else:
+                st.info(f"Gönderilmedi: {sonuc['neden']}")
+    else:
+        st.info("Telegram henüz ayarlı değil. Kurulum 2 dakika:")
+        st.markdown(
+            "1. Telegram'da **@BotFather**'a `/newbot` yaz → bir **token** al.\n"
+            "2. Botuna bir mesaj at, sonra şu adresten **chat id**'ni öğren:\n"
+            "   `https://api.telegram.org/bot<TOKEN>/getUpdates`\n"
+            "3. Ortam değişkenlerini ayarla (aşağıdaki gibi), paneli yeniden başlat."
+        )
+        st.code("export TELEGRAM_BOT_TOKEN=123456789:ABC...\n"
+                "export TELEGRAM_CHAT_ID=123456789", language="bash")
+
+    st.markdown("**Her borsa günü otomatik bildirim (cron, hafta içi 18:30):**")
+    st.code(
+        "30 18 * * 1-5  cd /yol/borsa-analiz && "
+        ".venv/bin/python -m automation.notify",
+        language="bash",
+    )
+    st.caption("Hafta sonu/resmî tatilde endeks veri üretmez → bot otomatik susar.")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 🎯 ÖNERİ (AL adayları) — Aşama 11
