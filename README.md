@@ -1,8 +1,8 @@
 # Borsa Analiz & Takip Sistemi
 
 Global + BIST hisseleri için takip, teknik analiz ve gün sonu tarama sistemi.
-Bu depo, projenin **Aşama 0–10** modüllerini içerir (Aşama 4 haber/KAP, 6 LLM
-sentez, 7 makro/rejim, 10 otomasyon dahil). Çekirdek testlerle doğrulanmıştır.
+Bu depo, projenin **Aşama 0–11** modüllerini içerir (Aşama 4 haber/KAP, 6 LLM
+sentez, 7 makro/rejim, 10 otomasyon, 11 öneri dahil). Çekirdek testlerle doğrulanmıştır.
 
 > **Önemli:** Bu bir karar **destek** aracıdır, kâhin değildir. Hiçbir çıktısı
 > yatırım tavsiyesi değildir. Üretilen sinyaller teknik göstergelerin matematiksel
@@ -110,7 +110,7 @@ borsa-analiz/
 │   ├── scheduler.py       # Aşama 10: tara → rejim → rapor
 │   └── run.py             # `python -m automation.run`
 ├── app/
-│   └── panel.py           # Streamlit arayüz (13 sekme)
+│   └── panel.py           # Streamlit arayüz (14 sekme)
 └── tests/
     ├── test_indicators.py # gösterge/sinyal testleri
     ├── test_stages.py     # Aşama 2-3-5-8-9 testleri
