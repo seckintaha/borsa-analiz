@@ -104,12 +104,15 @@ def _anahtar_var_mi(api_key: str | None) -> bool:
                 or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
 
 
-def sentezle(baglam: dict, model: str = "claude-opus-4-8",
-             max_tokens: int = 2000, api_key: str | None = None) -> LLMSentez:
-    """Bağlamı Claude ile dengeli bir özete çevirir. Anahtar yoksa ok=False."""
-    metin = baglam_metni(baglam)
-    if not metin:
-        return LLMSentez(False, not_="sentez için yeterli bağlam yok")
+def cevapla(sistem: str, kullanici: str, model: str = "claude-opus-4-8",
+            max_tokens: int = 2000, api_key: str | None = None) -> LLMSentez:
+    """
+    Düşük seviye Claude çağrısı. Verilen sistem komutu ve kullanıcı metniyle
+    yanıt üretir. Anahtar/kütüphane yoksa uydurmaz, ok=False döner.
+    Hem sentez (sentezle) hem öneri yorumu bunu kullanır.
+    """
+    if not kullanici:
+        return LLMSentez(False, not_="gönderilecek içerik yok")
 
     try:
         import anthropic
@@ -128,9 +131,9 @@ def sentezle(baglam: dict, model: str = "claude-opus-4-8",
         yanit = client.messages.create(
             model=model,
             max_tokens=max_tokens,
-            system=SISTEM,
+            system=sistem,
             thinking={"type": "adaptive"},
-            messages=[{"role": "user", "content": metin}],
+            messages=[{"role": "user", "content": kullanici}],
         )
     except anthropic.AuthenticationError:
         return LLMSentez(False, not_="API anahtarı geçersiz (AuthenticationError)")
@@ -145,3 +148,12 @@ def sentezle(baglam: dict, model: str = "claude-opus-4-8",
     if not parca:
         return LLMSentez(False, model=model, not_="model boş yanıt döndürdü")
     return LLMSentez(True, metin=parca, model=model)
+
+
+def sentezle(baglam: dict, model: str = "claude-opus-4-8",
+             max_tokens: int = 2000, api_key: str | None = None) -> LLMSentez:
+    """Bağlamı Claude ile dengeli bir özete çevirir. Anahtar yoksa ok=False."""
+    metin = baglam_metni(baglam)
+    if not metin:
+        return LLMSentez(False, not_="sentez için yeterli bağlam yok")
+    return cevapla(SISTEM, metin, model=model, max_tokens=max_tokens, api_key=api_key)

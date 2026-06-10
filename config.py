@@ -147,6 +147,22 @@ OTOMASYON = {
     "rapor_klasoru": "raporlar",
 }
 
+# ── Aşama 11: Öneri / Tarama Sıralaması ───────────────────────────────────────
+# İzleme listesini skorlar ve "AL adayı / İzle / Kaçın" olarak SIRALAR.
+# Skor şeffaftır: sinyal puanı + piyasa rejimi + dikkat bayrakları.
+# Doğrudan öneri verir; her öneri gerekçe + ayı senaryosu + güven düzeyiyle gelir.
+ONERI = {
+    "varsayilan_periyot": "1mo",   # tarama periyodu (panelden değiştirilebilir)
+    "sinyal_agirlik":     8,       # her sinyal puanının skora etkisi
+    "rejim_boga":        10,       # Boğa rejiminde skor bonusu
+    "rejim_ayi":        -12,       # Ayı rejiminde skor cezası
+    "bayrak_cezasi":    -10,       # her dikkat bayrağı (manipülasyon/ince hacim)
+    "esik_guclu_al":     70,       # >= bu skor → "Güçlü AL adayı"
+    "esik_al":           58,       # >= bu skor → "AL adayı"
+    "esik_izle":         43,       # >= bu skor → "Nötr / İzle"; altı "Zayıf / Kaçın"
+    "ai_yorum_aday":      6,       # AI yorumuna gönderilecek en iyi N aday
+}
+
 # ── Veri dayanıklılığı (yfinance sınırları + BIST düzeltmeleri) ────────────────
 VERI = {
     "max_deneme":      3,      # geçici hata/hız limitinde kaç kez yeniden denensin

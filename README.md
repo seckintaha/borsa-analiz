@@ -42,6 +42,10 @@ sentez, 7 makro/rejim, 10 otomasyon dahil). Çekirdek testlerle doğrulanmışt�
   oynaklığı **gerekçesiyle** sınıflar; izleme listesinden piyasa genişliği (breadth).
 - **Otomasyon (Aşama 10):** İzleme listesini tarar, rejimi okur, `raporlar/` altına
   tarihli Markdown rapor yazar. `python -m automation.run` veya cron ile.
+- **Öneri / Sıralama (Aşama 11):** İzleme listesini tüm göstergeler + piyasa rejimi
+  + dikkat bayraklarıyla **skorlar ve sıralar**; en üstte en güçlü **"AL adayları"**.
+  İstersen AI tüm bağlamı okuyup **sıralı, gerekçeli** bir öneri yazısı yazar. Her
+  öneri **gerekçe + ayı senaryosu + güven düzeyiyle** gelir; doğrudan ama şeffaftır.
 
 ## Hızlı demo (canlı veri gerektirmez)
 
@@ -95,7 +99,8 @@ borsa-analiz/
 │   ├── risk.py            # Aşama 9: risk yönetimi
 │   ├── news.py            # Aşama 4: haber & KAP (yfinance + RSS)
 │   ├── macro.py           # Aşama 7: makro / piyasa rejimi
-│   └── llm.py             # Aşama 6: LLM sentez (Claude)
+│   ├── llm.py             # Aşama 6: LLM sentez (Claude)
+│   └── recommender.py     # Aşama 11: öneri / sıralama (AL adayları + AI yorum)
 ├── portfolio/
 │   └── paper.py           # Aşama 2: paper portföy
 ├── backtest/
@@ -109,7 +114,9 @@ borsa-analiz/
     ├── test_indicators.py # gösterge/sinyal testleri
     ├── test_stages.py     # Aşama 2-3-5-8-9 testleri
     ├── test_stages2.py    # Aşama 4-6-7-10 testleri
-    └── test_data.py       # veri dayanıklılığı testleri (toplam 42 test)
+    ├── test_data.py       # veri dayanıklılığı testleri
+    ├── test_security.py   # güvenlik testleri
+    └── test_recommender.py# Aşama 11 öneri/sıralama testleri (toplam 55 test)
 ```
 
 ## Ayarlar

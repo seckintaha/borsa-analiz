@@ -29,6 +29,7 @@ from analysis import risk
 from analysis import macro
 from analysis import news
 from analysis import llm
+from analysis import recommender
 from portfolio.paper import PaperPortfolio, cok_ufuklu_getiri
 from backtest.engine import backtest, train_test_bol, strateji_sma_kesisim
 
@@ -244,9 +245,10 @@ if fr and fr.ok:
 
 # ── Sekmeler ──────────────────────────────────────────────────────────────────
 
-(tab_panel, tab_liste, tab_piyasa, tab_rejim, tab_haber, tab_ai, tab_portfoy,
- tab_backtest, tab_tarihsel, tab_kalibrasyon,
+(tab_oneri, tab_panel, tab_liste, tab_piyasa, tab_rejim, tab_haber, tab_ai,
+ tab_portfoy, tab_backtest, tab_tarihsel, tab_kalibrasyon,
  tab_risk, tab_otomasyon, tab_ogren) = st.tabs([
+    "🎯 Öneri (AL adayları)",
     "📊 Hisse Detayı",
     "📋 İzleme Listesi",
     "🔥 Piyasa Özeti",
@@ -1279,3 +1281,117 @@ with tab_otomasyon:
         language="bash",
     )
     st.caption("Komut satırından: `python -m automation.run`")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 🎯 ÖNERİ (AL adayları) — Aşama 11
+# ══════════════════════════════════════════════════════════════════════════════
+
+@st.cache_data(ttl=600)
+def _oneri_tara(wl_key: str, period: str, rejim: str):
+    symbols = [s for s in wl_key.split(",") if s]
+    return recommender.oneri_tara(
+        symbols, config.ONERI, thin_volume=config.SCREEN["thin_volume"],
+        rejim=rejim, period=period)
+
+_AKSIYON_RENK = {
+    "Güçlü AL adayı": "🟢", "AL adayı": "🟢",
+    "Nötr / İzle": "🟡", "Zayıf / Kaçın": "🔴", "Veri yok": "⚪",
+}
+
+with tab_oneri:
+    st.markdown("## 🎯 Öneri — AL adayları")
+    with st.expander("Bu sekme ne işe yarar? (önce okuyun)"):
+        st.markdown(
+            "İzleme listendeki hisseleri tüm göstergeler + piyasa rejimi + "
+            "dikkat bayraklarıyla **skorlar ve sıralar**; en üstte en güçlü "
+            "**AL adayları** olur. İstersen AI, tüm bağlamı okuyup sıralı bir "
+            "öneri yazısı yazar.\n\n"
+            "**Dürüstlük:** Skor, teknik göstergelerin matematiksel çıktısıdır; "
+            "geleceği bilmez ve **sık yanılır**. Bu lisanslı yatırım danışmanlığı "
+            "değildir. Her öneri gerekçe + ayı senaryosu + güven düzeyiyle gelir; "
+            "kararı sen verirsin."
+        )
+
+    cc1, cc2 = st.columns([1, 3])
+    _periyot_sec = cc1.selectbox(
+        "Analiz periyodu",
+        ["1mo", "3mo", "6mo", "1y"],
+        index=["1mo", "3mo", "6mo", "1y"].index(config.ONERI["varsayilan_periyot"]),
+        format_func=lambda x: {"1mo": "1 ay", "3mo": "3 ay",
+                               "6mo": "6 ay", "1y": "1 yıl"}[x],
+        help="1 ay kısa ve gürültülüdür; 50/200 günlük ortalamalar hesaplanamaz. "
+             "Daha güvenilir sinyal için 6 ay/1 yıl seçin.",
+    )
+
+    # Piyasa rejimini oku (bağlam)
+    _rejim_str = ""
+    fr_e = _rejim_veri(config.MACRO["rejim_endeksi"])
+    if fr_e.ok and fr_e.data is not None:
+        _rej = macro.rejim_tespit(fr_e.data)
+        _rejim_str = _rej.rejim
+        cc2.info(f"📡 Piyasa rejimi: **{_rej.rejim}** · oynaklık: {_rej.oynaklik} "
+                 f"(skorlara yansıtıldı)")
+
+    if not watchlist:
+        st.info("👈 Sol taraftaki 'İzleme Listesini Düzenle' bölümünden hisse ekleyin.")
+    else:
+        if _periyot_sec == "1mo":
+            st.caption("⚠️ 1 aylık pencere kısadır: uzun vadeli ortalamalar "
+                       "hesaplanamaz, sinyaller daha gürültülüdür (güven düşer).")
+        with st.spinner("Hisseler skorlanıyor (canlı veri)..."):
+            satirlar = _oneri_tara(",".join(watchlist), _periyot_sec, _rejim_str)
+
+        # Sıralı tablo
+        tablo = pd.DataFrame([{
+            "Hisse": r.symbol,
+            "Aksiyon": f"{_AKSIYON_RENK.get(r.aksiyon, '')} {r.aksiyon}",
+            "Skor": r.skor,
+            "Periyot %": r.degisim_pct,
+            "Güven": r.guven,
+            "Fiyat": r.son_fiyat,
+        } for r in satirlar])
+        st.dataframe(tablo, use_container_width=True, hide_index=True, height=380)
+
+        # Öne çıkan adaylar — kart kart, gerekçe + ayı + bayrak
+        adaylar = [r for r in satirlar if r.aksiyon in ("Güçlü AL adayı", "AL adayı")]
+        if adaylar:
+            st.markdown("### 🟢 Öne çıkan AL adayları")
+            for r in adaylar:
+                with st.container(border=True):
+                    st.markdown(f"**{r.symbol}** — {r.aksiyon} · "
+                                f"skor **{r.skor}/100** · güven: {r.guven}")
+                    if r.gerekceler:
+                        st.markdown("**Neden:** " + "; ".join(r.gerekceler))
+                    if r.ayi_senaryosu:
+                        st.markdown("**Ama dikkat (ayı senaryosu):** "
+                                    + "; ".join(r.ayi_senaryosu))
+                    for b in r.bayraklar:
+                        st.warning(b)
+        else:
+            st.info("Şu an eşikleri aşan güçlü AL adayı yok — piyasa zayıf ya da "
+                    "veri yetersiz olabilir. Bu da bir bilgidir.")
+
+        # AI ile sıralı öneri yazısı
+        st.markdown("---")
+        st.markdown("### 🤖 AI ile sıralı öneri")
+        st.caption("Yukarıdaki skorlanmış adayları ve rejimi AI'a verir; sıralı, "
+                   "gerekçeli ve risk uyarılı bir öneri yazısı alır.")
+        if st.button("🤖 Sıralı öneriyi yaz", type="primary"):
+            with st.spinner("Claude adayları değerlendiriyor..."):
+                rejim_ozeti = macro.ozetle(_rej) if fr_e.ok and fr_e.data is not None else ""
+                y = recommender.ai_yorum(
+                    satirlar, rejim_ozeti=rejim_ozeti,
+                    en_iyi_n=config.ONERI["ai_yorum_aday"],
+                    model=config.LLM["model"])
+            if y.ok:
+                st.markdown(y.metin)
+                st.caption(f"Model: {y.model}")
+            else:
+                st.warning(y.not_)
+                if "anahtar" in y.not_ or "API" in y.not_:
+                    st.code("export ANTHROPIC_API_KEY=sk-ant-...", language="bash")
+                    st.caption("anthropic kütüphanesi gerekiyorsa: pip install anthropic")
+
+    st.caption("⚠️ Skorlar ve öneriler teknik göstergelerin çıktısıdır; sık "
+               "yanılır. Lisanslı yatırım danışmanlığı değildir, karar sizindir.")

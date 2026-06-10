@@ -16,7 +16,13 @@ Bu bir karar **destek** aracıdır, kâhin değildir. Tüm kod şu ilkelere uyar
    eşlik eder.
 4. **Dürüst belirsizlik.** Az örnek (düşük `n`), bayat veri, düşük güven açıkça
    işaretlenir. Geriye dönük test/kalibrasyon yapılmadan güvenilirlik iddia edilmez.
-5. **Hiçbir çıktı yatırım tavsiyesi değildir.**
+5. **Hiçbir çıktı lisanslı yatırım tavsiyesi değildir.**
+
+> **Öneri sekmesi (Aşama 11) hakkında:** Kullanıcı isteğiyle, doğrudan "AL adayı"
+> sıralaması veren bir katman eklendi. Bu, felsefeyi **bozmaz**, uygular: öneri
+> doğrudandır ama **şeffaftır** — her skor açıklanabilir (sinyal + rejim +
+> bayraklar), her adayın **ayı senaryosu ve güven düzeyi** gösterilir ve
+> "lisanslı danışmanlık değildir" notu korunur. Gerekçesiz "al" yoktur.
 
 ---
 
@@ -69,7 +75,8 @@ veri katmanı I/O'yu yönetir. Bu ayrım sayesinde testler internet olmadan çal
 | `analysis/calibration.py` | 8 | Tahminleri gerçeğe karşı puanlar (yazı-tura kıyası) |
 | `analysis/risk.py` | 9 | Pozisyon büyüklüğü, yoğunlaşma, stop-loss, korelasyon |
 | `automation/scheduler.py` | 10 | Tara → rejim oku → tarihli Markdown rapor |
-| `app/panel.py` | — | 13 sekmeli Streamlit arayüzü |
+| `analysis/recommender.py` | 11 | Şeffaf skorlama + sıralama (AL adayları) + AI yorum |
+| `app/panel.py` | — | 14 sekmeli Streamlit arayüzü |
 
 Tüm sabitler `config.py`'de — kodun içine gömülü değer yoktur.
 

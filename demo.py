@@ -22,6 +22,7 @@ from analysis.historical import olay_calismasi, ozetle
 from analysis.calibration import Tahmin, gercek_ekle, kalibre_et, genel_ozet
 from analysis import risk
 from analysis import macro, news, llm
+from analysis import recommender as rec
 from analysis.screener import ScreenRow
 from automation.scheduler import rapor_metni
 
@@ -138,5 +139,32 @@ rows = [
 ]
 print(rapor_metni(rows, "XU100.IS — " + macro.ozetle(rej), "2026-06-08"))
 print("\n(Canlı tarama + dosyaya yazma için: python -m automation.run)")
+
+cizgi("AŞAMA 11 — ÖNERİ / SIRALAMA (offline skorlama)")
+# Üç sentetik hisse: güçlü yukarı, yatay, düşen (fiyat hep pozitif, az gürültü)
+def _temiz(egim, seed):
+    rng = np.random.default_rng(seed)
+    close = 200 + np.cumsum(egim + rng.normal(0, 0.6, 260))
+    idx = pd.date_range("2022-01-01", periods=260, freq="D")
+    return add_indicators(pd.DataFrame({
+        "Open": close, "High": close + 1, "Low": close - 1,
+        "Close": close, "Volume": rng.integers(800_000, 2_000_000, 260)}, index=idx))
+
+_hisseler = {"GUCLU.IS": (0.45, 1), "YATAY.IS": (0.0, 2), "ZAYIF.IS": (-0.30, 3)}
+_satirlar = []
+for _ad, (_eg, _sd) in _hisseler.items():
+    _d = _temiz(_eg, _sd)
+    # Rejim nötr bırakıldı ki teknik fark net görünsün
+    _skor, _ek = rec.skorla(_d, config.ONERI, config.SCREEN["thin_volume"], rejim="")
+    _satirlar.append(rec.OneriSatir(
+        _ad, _skor, rec._aksiyon(_skor, config.ONERI),
+        round(float(_d["Close"].iloc[-1]), 2), 0.0,
+        gerekceler=_ek["gerekceler"], guven=rec._guven(len(_d), len(_ek["bayraklar"]))))
+_satirlar.sort(key=lambda r: -r.skor)
+print("(Rejim etkisi nötr bırakıldı; sadece teknik fark gösteriliyor)")
+for r in _satirlar:
+    print(f"  {r.symbol:10} skor {r.skor:3}/100 → {r.aksiyon} (güven {r.guven})")
+_y = rec.ai_yorum(_satirlar, rejim_ozeti=macro.ozetle(rej))
+print("AI sıralı öneri:", "üretildi" if _y.ok else f"atlandı — {_y.not_}")
 
 print("\n[Tüm değerler sentetiktir; yatırım tavsiyesi değildir.]")
