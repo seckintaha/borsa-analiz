@@ -151,13 +151,22 @@ HABER = {
     # ile okunur, ek anahtar gerektirmez). Bir akış düşerse diğerleri çalışır;
     # hiçbiri uydurma değildir, her haber kaynağa + yayın zamanına bağlıdır.
     "rss_feeds": {
-        "BloombergHT":   "https://www.bloomberght.com/rss",
-        "Investing TR":  "https://tr.investing.com/rss/news.rss",
-        "NTV Ekonomi":   "https://www.ntv.com.tr/ekonomi.rss",
-        "AA Ekonomi":    "https://www.aa.com.tr/tr/rss/default?cat=ekonomi",
-        "Dünya":         "https://www.dunya.com/rss?dunya",
+        # Türkiye finans / ekonomi
+        "BloombergHT":    "https://www.bloomberght.com/rss",
+        "Investing TR":   "https://tr.investing.com/rss/news.rss",
+        "NTV Ekonomi":    "https://www.ntv.com.tr/ekonomi.rss",
+        "AA Ekonomi":     "https://www.aa.com.tr/tr/rss/default?cat=ekonomi",
+        "Dünya":          "https://www.dunya.com/rss?dunya",
+        "Ekonomim":       "https://www.ekonomim.com/rss/ekonomi",
+        "Para Analiz":    "https://www.paraanaliz.com/feed/",
+        # Borsa / KAP odaklı
+        "Borsagundem":    "https://www.borsagundem.com/rss",
+        "Finans Gündem":  "https://www.finansgundem.com/rss/finans-haberleri",
+        # Global piyasa (İngilizce)
+        "Reuters Biz":    "https://feeds.reuters.com/reuters/businessNews",
+        "MarketWatch":    "https://feeds.content.dowjones.io/public/rss/mw_topstories",
     },
-    "rss_basina_limit": 10,
+    "rss_basina_limit": 5,
 }
 
 # ── Aşama 7: Makro / Piyasa Rejimi ────────────────────────────────────────────
