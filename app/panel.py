@@ -245,13 +245,16 @@ if fr and fr.ok:
 
 # ── Sekmeler ──────────────────────────────────────────────────────────────────
 
-(tab_oneri, tab_panel, tab_liste, tab_piyasa, tab_rejim, tab_haber, tab_ai,
+(tab_oneri, tab_panel, tab_liste, tab_piyasa, tab_bist_evren, tab_halka_arz,
+ tab_rejim, tab_haber, tab_ai,
  tab_portfoy, tab_backtest, tab_tarihsel, tab_kalibrasyon,
  tab_risk, tab_otomasyon, tab_ogren) = st.tabs([
     "🎯 Öneri (AL adayları)",
     "📊 Hisse Detayı",
     "📋 İzleme Listesi",
     "🔥 Piyasa Özeti",
+    "🏦 BIST Evren (500 hisse)",
+    "🆕 Halka Arzlar",
     "🌐 Piyasa Rejimi",
     "📰 Haber & KAP",
     "🤖 AI Sentez",
@@ -443,6 +446,160 @@ with tab_piyasa:
             "Haftalık = son 5 işlem günü · Aylık = son ~21 işlem günü"
         )
         st.caption("⚠️ Yatırım tavsiyesi değildir. Veriler bilgilendirme amaçlıdır.")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 🏦 BIST EVREN — 500 hisse TradingView taraması
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_bist_evren:
+    st.markdown("## 🏦 BIST Evren — Tüm Piyasa Taraması")
+    with st.expander("Bu sekme ne işe yarar?"):
+        st.markdown(
+            "BIST'teki **~500 hisseyi** TradingView scanner ile **tek sorguda** "
+            "tarar. Her hisse için fiyat, günlük değişim, RSI, MACD ve EMA düzeni "
+            "gösterilir. Teknik sinyal skoruna göre sıralanır. "
+            "Kaynak: TradingView scanner — kap.org.tr resmi API değil. "
+            "Veriler yaklaşık 15 dakika gecikmeli olabilir."
+        )
+
+    col_f1, col_f2 = st.columns([2, 1])
+    with col_f1:
+        aksiyon_filtre = st.multiselect(
+            "Aksiyon filtresi",
+            ["Güçlü AL adayı", "AL adayı", "Nötr / İzle", "Zayıf / Kaçın"],
+            default=["Güçlü AL adayı", "AL adayı"],
+            key="bist_evren_aksiyon",
+        )
+    with col_f2:
+        yenile_bist = st.button("🔄 Yenile", key="bist_evren_yenile")
+
+    @st.cache_data(ttl=600, show_spinner=False)
+    def _bist_evren_tara():
+        from analysis.bist_tarama import bist_tara, ozet_istatistik
+        ok, hata, satirlar = bist_tara(limit=600)
+        if not ok:
+            return False, hata, [], {}
+        ist = ozet_istatistik(satirlar)
+        return True, "", satirlar, ist
+
+    if yenile_bist:
+        st.cache_data.clear()
+
+    with st.spinner("500 hisse TradingView'dan çekiliyor..."):
+        bist_ok, bist_hata, bist_satirlar, bist_ist = _bist_evren_tara()
+
+    if not bist_ok:
+        st.error(f"TradingView erişim hatası: {bist_hata}")
+    else:
+        # Özet metrikler
+        mc1, mc2, mc3, mc4, mc5 = st.columns(5)
+        mc1.metric("Taranan", bist_ist.get("toplam", 0))
+        mc2.metric("Yükseliş", bist_ist.get("yukselis", 0))
+        mc3.metric("Düşüş", bist_ist.get("dusus", 0))
+        mc4.metric("Güçlü AL", bist_ist.get("guclu_al", 0))
+        ort_d = bist_ist.get("ort_degisim_pct")
+        mc5.metric("Ort. Değişim", f"%{ort_d:+.2f}" if ort_d else "—")
+
+        st.divider()
+
+        # Filtrelenmiş liste
+        goster = [r for r in bist_satirlar if r.aksiyon in aksiyon_filtre] \
+                 if aksiyon_filtre else bist_satirlar
+
+        if not goster:
+            st.info("Seçili filtreye uyan hisse yok.")
+        else:
+            import pandas as pd
+            tablo = []
+            for r in goster:
+                tablo.append({
+                    "Sembol": r.sembol.replace(".IS", ""),
+                    "Ad": r.ad[:25],
+                    "Fiyat": r.fiyat,
+                    "Değişim %": r.degisim_pct,
+                    "RSI": r.rsi,
+                    "MACD": r.macd_sinyal,
+                    "EMA Düzeni": r.ema_durumu,
+                    "Hacim Kat": r.hacim_kat,
+                    "Aksiyon": r.aksiyon,
+                    "Skor": r.sinyal_skoru,
+                    "Hafta %": r.perf_hafta,
+                    "Ay %": r.perf_ay,
+                })
+            df_bist = pd.DataFrame(tablo)
+
+            def _renk(val):
+                if isinstance(val, str):
+                    if "Güçlü AL" in val:
+                        return "background-color: #1a4a1a; color: #90ee90"
+                    if "AL adayı" in val:
+                        return "background-color: #0d3b0d; color: #76c776"
+                    if "Kaçın" in val:
+                        return "background-color: #4a1a1a; color: #ee9090"
+                return ""
+
+            st.dataframe(
+                df_bist.style.applymap(_renk, subset=["Aksiyon"]),
+                use_container_width=True, hide_index=True,
+                height=min(600, 36 + 36 * len(df_bist)),
+            )
+            st.caption(
+                f"Toplam {len(goster)} hisse gösteriliyor | "
+                "Kaynak: TradingView scanner · ~15 dk gecikme olabilir · "
+                "Yatırım tavsiyesi değildir."
+            )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 🆕 HALKA ARZLAR (IPO)
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_halka_arz:
+    st.markdown("## 🆕 Halka Arzlar")
+    with st.expander("Bu sekme ne işe yarar?"):
+        st.markdown(
+            "Son 90 gün içinde BIST'e **yeni kote olan hisseleri** listeler. "
+            "İlk işlem tarihi, halka arz fiyatına göre getiri ve teknik durum "
+            "gösterilir. Kaynak: yfinance ilk işlem tarihi bilgisi. "
+            "Eksik veya hatalı veri yfinance kısıtından kaynaklanabilir."
+        )
+
+    arz_gun = st.slider("Kaç günlük geçmişe bak?", 30, 365, 90, step=30,
+                        key="halka_arz_gun")
+
+    @st.cache_data(ttl=3600, show_spinner=False)
+    def _halka_arz_tara_cache(gun: int):
+        from data.bist_evren import bist_evren_al
+        from analysis.kap import halka_arz_tara
+        evren = bist_evren_al()
+        sonuclar = halka_arz_tara(evren[:60], son_gun=gun)
+        return sonuclar
+
+    with st.spinner("Halka arzlar kontrol ediliyor..."):
+        arzlar = _halka_arz_tara_cache(arz_gun)
+
+    if not arzlar:
+        st.info(
+            f"Son {arz_gun} gün içinde halka arz tespit edilmedi. "
+            "(yfinance'da ilk işlem tarihi bilgisi eksik olabilir)"
+        )
+    else:
+        import pandas as pd
+        tablo_arz = []
+        for h in arzlar:
+            tablo_arz.append({
+                "Sembol": h.sembol,
+                "Şirket": h.ad[:35],
+                "İlk İşlem": h.ilk_islem_tarihi,
+                "İlk Fiyat": h.ilk_fiyat,
+                "Son Fiyat": h.son_fiyat,
+                "Getiri %": h.getiri_pct,
+            })
+        df_arz = pd.DataFrame(tablo_arz)
+        st.dataframe(df_arz, use_container_width=True, hide_index=True)
+        st.caption(
+            "Kaynak: yfinance · Getiri = son fiyat / ilk işlem günü kapanışı · "
+            "Yatırım tavsiyesi değildir."
+        )
 
 
 # ══════════════════════════════════════════════════════════════════════════════

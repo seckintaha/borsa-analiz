@@ -38,20 +38,11 @@ def telegram_ayarli_mi() -> bool:
                and os.environ.get("TELEGRAM_CHAT_ID"))
 
 
-def telegram_gonder(metin: str, token: str | None = None,
-                    chat_id: str | None = None, timeout: float = 10.0) -> tuple[bool, str]:
-    """
-    Telegram'a düz metin mesaj gönderir. Token/chat id yoksa (False, açıklama).
-    Token URL'de taşınır (Telegram'ın yöntemi) — asla loglanmaz.
-    """
-    token = token or os.environ.get("TELEGRAM_BOT_TOKEN")
-    chat_id = chat_id or os.environ.get("TELEGRAM_CHAT_ID")
-    if not token or not chat_id:
-        return (False, "Telegram ayarlı değil (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID)")
-
+def _tek_gonder(token: str, chat_id: str, metin: str, timeout: float) -> tuple[bool, str]:
+    """Tek bir chat_id'ye mesaj gönderir."""
     veri = urllib.parse.urlencode({
         "chat_id": chat_id,
-        "text": metin[:4000],              # Telegram sınırı ~4096
+        "text": metin[:4000],
         "disable_web_page_preview": "true",
     }).encode()
     try:
@@ -60,10 +51,32 @@ def telegram_gonder(metin: str, token: str | None = None,
             sonuc = json.loads(yanit.read().decode("utf-8", errors="replace"))
     except Exception as exc:
         return (False, f"Telegram gönderim hatası: {exc}")
-
     if sonuc.get("ok"):
         return (True, "")
     return (False, f"Telegram reddetti: {sonuc.get('description', 'bilinmeyen hata')}")
+
+
+def telegram_gonder(metin: str, token: str | None = None,
+                    chat_id: str | None = None, timeout: float = 10.0) -> tuple[bool, str]:
+    """
+    Telegram'a mesaj gönderir. TELEGRAM_KANAL_ID ayarlıysa kanala da gönderir.
+    Token URL'de taşınır — asla loglanmaz.
+    """
+    token = token or os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = chat_id or os.environ.get("TELEGRAM_CHAT_ID")
+    if not token or not chat_id:
+        return (False, "Telegram ayarlı değil (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID)")
+
+    ok, hata = _tek_gonder(token, chat_id, metin, timeout)
+
+    # Kanal ID varsa kanala da gönder (hata olsa bile devam)
+    kanal_id = os.environ.get("TELEGRAM_KANAL_ID", "").strip()
+    if kanal_id and kanal_id != chat_id:
+        _tek_gonder(token, kanal_id, metin, timeout)
+
+    if ok:
+        return (True, "")
+    return (False, f"Telegram hatası: {hata}")
 
 
 # ── Borsa günü tespiti (veri-temelli, takvim gömülmeden) ──────────────────────
@@ -275,6 +288,210 @@ def chat_id_bul(token: str | None = None, timeout: float = 10.0) -> tuple[bool, 
     return (True, satir)
 
 
+# ── Tam BIST raporu (tüm piyasa) ──────────────────────────────────────────────
+
+def tam_bist_rapor_metni(
+    istatistik: dict,
+    adaylar,
+    rejim_str: str,
+    zaman: str,
+    haberler=None,
+    halka_arzlar=None,
+    yorum: str = "",
+    mod: str = "eod",
+) -> str:
+    """
+    Tüm BIST taramasından kapsamlı Telegram raporu üretir.
+    AL adayları + piyasa geneli + haberler + halka arzlar + kısa yorum.
+    """
+    baslik = "📊 BIST Tam Piyasa Analizi" if mod == "eod" else "⏱️ BIST Gün-İçi Analizi"
+    zaman_fmt = zaman[:16].replace("T", " ")
+
+    sat = [
+        f"{baslik} — {zaman_fmt}",
+        "",
+        f"🌐 Rejim: {rejim_str}",
+        "",
+    ]
+
+    # Piyasa geneli istatistik
+    t = istatistik
+    if t.get("toplam"):
+        y = t.get("yukselis", 0)
+        d = t.get("dusus", 0)
+        n = t.get("degismedi", 0)
+        ort = t.get("ort_degisim_pct")
+        ort_str = f"%{ort:+.2f}" if ort is not None else "—"
+        sat += [
+            f"📋 {t['toplam']} hisse tarandı",
+            f"   ▲ Yükseliş: {y}  ▼ Düşüş: {d}  ➡ Değişmedi: {n}",
+            f"   Ort. değişim: {ort_str}",
+        ]
+        if t.get("ort_rsi"):
+            sat.append(f"   Ort. RSI: {t['ort_rsi']} · Aşırı satım: {t.get('asiri_satim_sayisi',0)} hisse")
+        sat.append("")
+
+    # AL adayları
+    n_al = t.get("guclu_al", 0) + t.get("al_adayi", 0)
+    if adaylar:
+        sat.append(f"🟢 AL ADAYLARI ({n_al} hisse)")
+        for i, r in enumerate(adaylar[:8], 1):
+            isaret = "🔥" if r.aksiyon == "Güçlü AL adayı" else "⭐"
+            deg_str = f"%{r.degisim_pct:+.1f}" if r.degisim_pct is not None else "—"
+            fiy_str = f"{r.fiyat:,.2f}" if r.fiyat else "—"
+            rsi_str = str(r.rsi) if r.rsi else "—"
+            sat.append(f"")
+            sat.append(f"{i}) {isaret} {r.sembol} — {r.aksiyon}")
+            sat.append(f"   💰 {fiy_str} · değişim {deg_str} · RSI {rsi_str}")
+            sat.append(f"   📊 MACD: {r.macd_sinyal} · EMA: {r.ema_durumu}")
+            for g in r.gerekceler[:3]:
+                sat.append(f"   ✓ {g}")
+            for u in r.uyarilar[:1]:
+                sat.append(f"   ⚑ {u}")
+    else:
+        sat.append("🟡 Bugün güçlü AL adayı tespit edilmedi.")
+
+    # Halka arzlar
+    if halka_arzlar:
+        sat += ["", f"🆕 SON HALKA ARZLAR ({len(halka_arzlar)})"]
+        for h in halka_arzlar[:5]:
+            getiri_str = (f"%{h.getiri_pct:+.1f}" if h.getiri_pct is not None else "—")
+            sat.append(f"• {h.sembol} ({h.ad[:30]}) — ilk işlem: {h.ilk_islem_tarihi} · getiri: {getiri_str}")
+
+    # Haber başlıkları
+    if haberler:
+        sat += ["", "📰 GÜNÜN ÖNEMLI HABERLERİ"]
+        gosterilen = 0
+        for h in haberler:
+            if gosterilen >= 6:
+                break
+            sat.append(f"• {h.baslik[:100]}  —{h.kaynak}")
+            gosterilen += 1
+
+    # Kısa yorum
+    if yorum:
+        sat += ["", f"💬 Kısa yorum: {yorum}"]
+
+    sat += [
+        "",
+        "━━━━━━━━━━━━━━",
+        "⚠️ Teknik taramadır, yatırım tavsiyesi DEĞİLDİR.",
+        "Kaynak: TradingView scanner + RSS · Kap.org.tr resmi API değil.",
+    ]
+
+    return "\n".join(sat)[:4000]
+
+
+def tam_bist_bildirim(
+    db_path: str,
+    macro_cfg: dict,
+    tg_cfg: dict,
+    screen_cfg: dict,
+    haber_cfg: dict | None = None,
+    mod: str = "eod",
+    halka_arz_gun: int = 90,
+) -> dict:
+    """
+    Tüm BIST'i tarar (TradingView scanner) + haber + IPO → Telegram bildirim.
+    """
+    from data.access import veri_getir
+    from analysis import macro
+    from analysis.bist_tarama import bist_tara, ozet_istatistik
+    from analysis.kap import piyasa_akisi, halka_arz_tara, piyasa_yorumu
+    from data.storage import init_db, log_event
+    from data.bist_evren import bist_evren_al
+
+    zaman = datetime.now().isoformat(timespec="seconds")
+    init_db(db_path)
+
+    # Borsa günü kontrolü
+    endeks = macro_cfg.get("rejim_endeksi", "XU100.IS")
+    fr = veri_getir(db_path, endeks, period="2y", interval="1d")
+    son_tarih = fr.meta.get("son_tarih", "") if fr.ok else ""
+
+    if tg_cfg.get("sadece_borsa_gunu", True):
+        taze = veri_taze_mi(son_tarih) if mod == "gunici" else borsa_gunu_mu(son_tarih)
+        if not taze:
+            return {"gonderildi": False,
+                    "neden": f"borsa günü değil / veri taze değil (son veri: {son_tarih or 'yok'})"}
+
+    # Piyasa rejimi
+    rejim_str = f"{endeks} — rejim okunamadı"
+    rejim = ""
+    if fr.ok and fr.data is not None:
+        rej = macro.rejim_tespit(fr.data)
+        rejim_str = f"{endeks} — {macro.ozetle(rej)}"
+        rejim = rej.rejim
+
+    # TradingView ile tüm BIST taraması
+    ok, hata, satirlar = bist_tara()
+    if not ok:
+        rejim_str_not = f"{rejim_str} | TV tarama hatası: {hata}"
+        log_event(db_path, zaman, symbol="", kind="bist_tarama",
+                  detail=f"TradingView hatası: {hata}", source="tam_bildirim")
+        # Watchlist'e düş (yedek)
+        satirlar = []
+
+    istatistik = ozet_istatistik(satirlar)
+    adaylar = [r for r in satirlar if r.aksiyon in ("Güçlü AL adayı", "AL adayı")]
+
+    # RSS haberleri
+    haberler = []
+    if haber_cfg and haber_cfg.get("rss_feeds"):
+        try:
+            hr = piyasa_akisi(dict(haber_cfg["rss_feeds"]),
+                              limit=haber_cfg.get("rss_basina_limit", 5))
+            if hr.ok:
+                haberler = hr.kayitlar[:10]
+        except Exception:
+            pass
+
+    # Halka arzlar — sadece gün sonu ve eğer BIST evreni mevcutsa
+    halka_arzlar = []
+    if mod == "eod":
+        try:
+            evren = bist_evren_al()
+            # Sadece küçük bir örneklem al (ilk 30 hisse ilk işlem kontrolü için hızlıdır)
+            halka_arzlar = halka_arz_tara(evren[:30], son_gun=halka_arz_gun)
+        except Exception:
+            pass
+
+    # Kısa yorum
+    yorum = piyasa_yorumu(
+        rejim=rejim_str,
+        n_al=len(adaylar),
+        n_yukselis=istatistik.get("yukselis", 0),
+        n_dusus=istatistik.get("dusus", 0),
+        n_toplam=istatistik.get("toplam", 0),
+        ortalama_degisim=istatistik.get("ort_degisim_pct"),
+    )
+
+    metin = tam_bist_rapor_metni(
+        istatistik=istatistik,
+        adaylar=adaylar,
+        rejim_str=rejim_str,
+        zaman=zaman,
+        haberler=haberler,
+        halka_arzlar=halka_arzlar,
+        yorum=yorum,
+        mod=mod,
+    )
+
+    tg_ok, tg_hata = telegram_gonder(metin)
+    log_event(db_path, zaman, symbol="", kind="tam_bist_bildirim",
+              detail=(f"{mod} gönderildi, {istatistik.get('toplam',0)} hisse"
+                      if tg_ok else f"{mod} başarısız: {tg_hata}"),
+              source="telegram")
+
+    return {
+        "gonderildi": tg_ok,
+        "neden": tg_hata if not tg_ok else "",
+        "rejim": rejim_str,
+        "taranan": istatistik.get("toplam", 0),
+        "metin": metin,
+    }
+
+
 def main() -> None:
     import config
     from data.storage import load_watchlist
@@ -295,16 +512,32 @@ def main() -> None:
         return
 
     mod = "gunici" if "--gunici" in sys.argv else "eod"
-    watchlist = load_watchlist(config.DB_PATH) or list(config.WATCHLIST)
-    sonuc = gunluk_bildirim(
-        db_path=config.DB_PATH, watchlist=watchlist,
-        oneri_cfg=config.ONERI, screen_cfg=config.SCREEN,
-        macro_cfg=config.MACRO, tg_cfg=config.TELEGRAM,
-        mod=mod, haber_cfg=getattr(config, "HABER", None))
+
+    # --tam bayrağı: tüm BIST TradingView taraması (varsayılan EOD için)
+    tam_mod = "--tam" in sys.argv or mod == "eod"
+
+    if tam_mod:
+        sonuc = tam_bist_bildirim(
+            db_path=config.DB_PATH,
+            macro_cfg=config.MACRO,
+            tg_cfg=config.TELEGRAM,
+            screen_cfg=config.SCREEN,
+            haber_cfg=getattr(config, "HABER", None),
+            mod=mod,
+        )
+    else:
+        watchlist = load_watchlist(config.DB_PATH) or list(config.WATCHLIST)
+        sonuc = gunluk_bildirim(
+            db_path=config.DB_PATH, watchlist=watchlist,
+            oneri_cfg=config.ONERI, screen_cfg=config.SCREEN,
+            macro_cfg=config.MACRO, tg_cfg=config.TELEGRAM,
+            mod=mod, haber_cfg=getattr(config, "HABER", None))
 
     if sonuc["gonderildi"]:
-        print(f"✅ Telegram bildirimi gönderildi ({mod}).")
-        print(sonuc["rejim"])
+        taranan = sonuc.get("taranan", "")
+        taranan_str = f" ({taranan} hisse)" if taranan else ""
+        print(f"✅ Telegram bildirimi gönderildi ({mod}){taranan_str}.")
+        print(sonuc.get("rejim", ""))
     else:
         print(f"ℹ️ Gönderilmedi: {sonuc['neden']}")
 
