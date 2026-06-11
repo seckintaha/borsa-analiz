@@ -5,6 +5,7 @@ bağımlılık gerektirmez.
 
 from __future__ import annotations
 import pandas as pd
+import numpy as np
 
 
 def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
@@ -32,6 +33,19 @@ def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df["BB_ust"] = orta + 2 * std
     df["BB_alt"] = orta - 2 * std
 
+    # ATR / ADX / OBV — High/Low/Volume varsa hesapla (yoksa atla)
+    high = df["High"] if "High" in df.columns else None
+    low = df["Low"] if "Low" in df.columns else None
+    vol = df["Volume"] if "Volume" in df.columns else None
+
+    if high is not None and low is not None:
+        df["ATR14"] = _atr(high, low, close, 14)
+        adx, di_pos, di_neg = _adx(high, low, close, 14)
+        df["ADX14"], df["DI_pos"], df["DI_neg"] = adx, di_pos, di_neg
+    if vol is not None:
+        df["OBV"] = _obv(close, vol)
+        df["OBV_SMA20"] = df["OBV"].rolling(20).mean()
+
     return df
 
 
@@ -41,3 +55,42 @@ def _rsi(close: pd.Series, period: int = 14) -> pd.Series:
     kayip = (-delta.clip(upper=0)).rolling(period).mean()
     rs = kazanc / kayip
     return 100 - (100 / (1 + rs))
+
+
+def _true_range(high: pd.Series, low: pd.Series, close: pd.Series) -> pd.Series:
+    onceki_kapanis = close.shift(1)
+    tr = pd.concat([
+        high - low,
+        (high - onceki_kapanis).abs(),
+        (low - onceki_kapanis).abs(),
+    ], axis=1).max(axis=1)
+    return tr
+
+
+def _atr(high, low, close, period: int = 14) -> pd.Series:
+    """Average True Range — oynaklık ölçüsü (stop/hedef mesafesi için)."""
+    return _true_range(high, low, close).ewm(alpha=1 / period, adjust=False).mean()
+
+
+def _adx(high, low, close, period: int = 14):
+    """
+    ADX (trend gücü) + yönlü göstergeler (+DI/-DI). Wilder yöntemi.
+    ADX > 25 güçlü trend, < 20 zayıf/yatay olarak yorumlanır.
+    """
+    up = high.diff()
+    down = -low.diff()
+    plus_dm = ((up > down) & (up > 0)) * up
+    minus_dm = ((down > up) & (down > 0)) * down
+    tr = _true_range(high, low, close)
+    atr = tr.ewm(alpha=1 / period, adjust=False).mean()
+    di_pos = 100 * plus_dm.ewm(alpha=1 / period, adjust=False).mean() / atr
+    di_neg = 100 * minus_dm.ewm(alpha=1 / period, adjust=False).mean() / atr
+    dx = 100 * (di_pos - di_neg).abs() / (di_pos + di_neg).replace(0, np.nan)
+    adx = dx.ewm(alpha=1 / period, adjust=False).mean()
+    return adx, di_pos, di_neg
+
+
+def _obv(close: pd.Series, volume: pd.Series) -> pd.Series:
+    """On-Balance Volume — hacmin yön ağırlıklı birikimi (para akışı)."""
+    yon = close.diff().apply(lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
+    return (yon * volume).fillna(0).cumsum()
