@@ -177,6 +177,20 @@ def test_acik_pozisyonlar_kapanan_silinir(gecici_db):
     assert "AAA.IS" not in acik_pozisyonlar(gecici_db)   # tamamı satıldı
 
 
+# ── alarm (portföy stop/hedef/zarar) ──────────────────────────────────────────
+
+def test_alarm_bos_portfoy(gecici_db):
+    from analysis.alarm import portfoy_alarmlari
+    import config
+    assert portfoy_alarmlari(gecici_db, config.RISK) == []   # pozisyon yok → alarm yok
+
+
+def test_alarm_metni_bos():
+    from analysis.alarm import alarm_metni
+    metin = alarm_metni([])
+    assert "Aktif alarm yok" in metin
+
+
 # ── tv_scanner.sinyal_puan (saf) ──────────────────────────────────────────────
 
 def test_tv_sinyal_puan_boga_pozitif():

@@ -88,6 +88,7 @@ def cmd_yardim() -> str:
         "/portfoyum  Pozisyonların + canlı kâr/zarar\n"
         "/ekle SEMBOL ADET [FIYAT]   örn: /ekle THYAO 100 280\n"
         "/sat SEMBOL [ADET]          örn: /sat THYAO 50\n"
+        "/alarmlar    Stop/hedef/zarar alarmları\n"
         "/portfoy     Zayıflık/korelasyon/hedge analizi\n"
         "/aliskanlik  İşlem alışkanlık analizi + 3 kural\n"
         "/portfoysil  Portföyü sıfırla\n\n"
@@ -120,6 +121,19 @@ def cmd_aylik() -> str:
         return aylik_ozet_metni(config.DB_PATH, config.MACRO)
     except Exception as exc:
         return f"❌ Aylık özet hatası: {exc}"
+
+
+def cmd_alarmlar() -> str:
+    """Portföy stop/hedef/zarar alarmları (Öneri #2+#3)."""
+    try:
+        import config
+        from portfolio.ozet import acik_pozisyonlar
+        from analysis.alarm import portfoy_alarmlari, alarm_metni
+        if not acik_pozisyonlar(config.DB_PATH):
+            return ("📭 Portföyün boş — alarm için önce hisse ekle:\n/ekle THYAO 100 280")
+        return alarm_metni(portfoy_alarmlari(config.DB_PATH, config.RISK))
+    except Exception as exc:
+        return f"❌ Alarm hatası: {exc}"
 
 
 def cmd_fikirler() -> str:
@@ -663,6 +677,9 @@ def _isle(token: str, chat_id: str, mesaj: dict) -> None:
     elif komut == "/aylik":
         gonder(token, chat_id, "⏳ Aylık özet hazırlanıyor (biraz sürebilir)...")
         yanit = cmd_aylik()
+    elif komut in ("/alarmlar", "/alarm"):
+        gonder(token, chat_id, "⏳ Portföy alarmları kontrol ediliyor...")
+        yanit = cmd_alarmlar()
     elif komut == "/fikirler":
         gonder(token, chat_id, "⏳ Günün 5 fikri analiz ediliyor (biraz sürebilir)...")
         yanit = cmd_fikirler()

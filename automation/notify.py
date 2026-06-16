@@ -299,10 +299,12 @@ def tam_bist_rapor_metni(
     halka_arzlar=None,
     yorum: str = "",
     mod: str = "eod",
+    portfoy_alarmlari=None,
 ) -> str:
     """
     Tüm BIST taramasından kapsamlı Telegram raporu üretir.
     AL adayları + piyasa geneli + haberler + halka arzlar + kısa yorum.
+    portfoy_alarmlari: tetiklenen Alarm listesi (varsa en üstte gösterilir).
     """
     baslik = "📊 BIST Tam Piyasa Analizi" if mod == "eod" else "⏱️ BIST Gün-İçi Analizi"
     zaman_fmt = zaman[:16].replace("T", " ")
@@ -313,6 +315,13 @@ def tam_bist_rapor_metni(
         f"🌐 Rejim: {rejim_str}",
         "",
     ]
+
+    # Portföy alarmları — en üstte (kritik)
+    if portfoy_alarmlari:
+        sat.append("🚨 PORTFÖY ALARMLARIN")
+        for a in portfoy_alarmlari[:8]:
+            sat.append(f"   {a.mesaj}")
+        sat.append("")
 
     # Piyasa geneli istatistik
     t = istatistik
@@ -456,6 +465,15 @@ def tam_bist_bildirim(
         except Exception:
             pass
 
+    # Portföy alarmları (stop/hedef/zarar) — pozisyon varsa
+    alarmlar = []
+    try:
+        from analysis.alarm import portfoy_alarmlari as _alarm_tara
+        import config as _cfg
+        alarmlar = _alarm_tara(db_path, getattr(_cfg, "RISK", {"stop_loss_pct": -0.08}))
+    except Exception:
+        alarmlar = []
+
     # Kısa yorum
     yorum = piyasa_yorumu(
         rejim=rejim_str,
@@ -475,6 +493,7 @@ def tam_bist_bildirim(
         halka_arzlar=halka_arzlar,
         yorum=yorum,
         mod=mod,
+        portfoy_alarmlari=alarmlar,
     )
 
     tg_ok, tg_hata = telegram_gonder(metin)
