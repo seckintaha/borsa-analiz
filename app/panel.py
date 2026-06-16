@@ -245,20 +245,25 @@ if fr and fr.ok:
 
 # ── Sekmeler ──────────────────────────────────────────────────────────────────
 
-(tab_oneri, tab_panel, tab_liste, tab_piyasa, tab_bist_evren, tab_halka_arz,
+(tab_oneri, tab_plan, tab_fikir, tab_derin,
+ tab_panel, tab_liste, tab_piyasa, tab_bist_evren, tab_halka_arz,
  tab_rejim, tab_haber, tab_ai,
- tab_portfoy, tab_backtest, tab_tarihsel, tab_kalibrasyon,
+ tab_portfoy, tab_aliskanlik, tab_backtest, tab_tarihsel, tab_kalibrasyon,
  tab_risk, tab_otomasyon, tab_ogren) = st.tabs([
     "🎯 Öneri (AL adayları)",
+    "🗓️ Günlük Plan",
+    "💡 Günün 5 Fikri",
+    "🔍 Derin Analiz",
     "📊 Hisse Detayı",
     "📋 İzleme Listesi",
     "🔥 Piyasa Özeti",
-    "🏦 BIST Evren (500 hisse)",
+    "🏦 BIST Evren (607 hisse)",
     "🆕 Halka Arzlar",
     "🌐 Piyasa Rejimi",
     "📰 Haber & KAP",
     "🤖 AI Sentez",
     "💼 Sanal Portföy",
+    "🧠 İşlem Alışkanlıkları",
     "🔬 Strateji Testi",
     "📅 Tarihsel Analiz",
     "🎯 Tahmin Takibi",
@@ -266,6 +271,121 @@ if fr and fr.ok:
     "⏰ Otomasyon",
     "📚 Gösterge Rehberi",
 ])
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 🗓️ GÜNLÜK İŞLEM PLANI (Özellik #1)
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_plan:
+    st.markdown("## 🗓️ Otomatik Günlük İşlem Planı")
+    with st.expander("Bu sekme ne işe yarar?"):
+        st.markdown(
+            "Sabah açılış öncesinden kapanışa kadar **saat saat** ne izleyeceğini "
+            "planlar: açılış öncesi kontrol, açılış stratejisi, gün içi düzeltme "
+            "noktaları (12:00/14:00/16:00) ve kapanış öncesi hareketler. "
+            "O anki tarama + rejim + haber verisine dayanır."
+        )
+    if st.button("🗓️ Bugünün planını oluştur", key="plan_olustur"):
+        with st.spinner("Plan hazırlanıyor (tüm BIST taranıyor)..."):
+            from analysis.gunluk_plan import gunluk_plan_metni
+            plan = gunluk_plan_metni(config.DB_PATH, config.MACRO,
+                                     getattr(config, "HABER", None))
+        st.text(plan)
+    else:
+        st.info("👆 Butona bas — güncel taramaya göre saat saat plan üretilir.")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 💡 GÜNÜN 5 İŞLEM FİKRİ (Özellik #7)
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_fikir:
+    st.markdown("## 💡 Günün 5 İşlem Fikri")
+    with st.expander("Bu sekme ne işe yarar?"):
+        st.markdown(
+            "Tüm BIST'i tarar, en yüksek olasılıklı **5 fırsatı** net seviyelerle "
+            "verir: **giriş / kar-al / zarar-kes / risk-ödül oranı** + teknik ve "
+            "temel gerekçe. Sadece risk/ödül ≥ 1.5 olan AL adayları listelenir."
+        )
+    if st.button("💡 Günün 5 fikrini üret", key="fikir_uret"):
+        with st.spinner("Adaylar derin analizden geçiriliyor (1-2 dk sürebilir)..."):
+            from analysis.fikirler import gunun_fikirleri
+            ok, hata, fikirler = gunun_fikirleri(config.DB_PATH, n_fikir=5, aday_havuzu=25)
+        if not ok:
+            st.error(hata)
+        elif not fikirler:
+            st.warning("Bugün kriterleri karşılayan (R/R ≥ 1.5) AL fikri yok.")
+        else:
+            for i, f in enumerate(fikirler, 1):
+                emoji = "🔥" if f.guven == "Yüksek" else "⭐"
+                st.markdown(f"### {i}) {emoji} {f.sembol} — {f.karar} ({f.guven} güven)")
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Giriş", f.giris)
+                c2.metric("🎯 Hedef", f.kar_al)
+                c3.metric("🛑 Stop", f.zarar_kes)
+                c4.metric("⚖️ R/R", f"1:{f.risk_odul}")
+                st.caption("📊 Teknik: " + "; ".join(g[2:] for g in f.teknik_gerekce))
+                st.caption("📈 Bağlam: " + f.temel_gerekce)
+                for u in f.uyarilar:
+                    st.warning("⚑ " + u)
+                st.divider()
+            st.caption("⚠️ Teknik tarama çıktısıdır; seviyeler kesin değildir, "
+                       "yatırım tavsiyesi değildir.")
+    else:
+        st.info("👆 Butona bas — tüm BIST taranıp en iyi 5 fikir seviyeleriyle gelir.")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 🔍 DERİN TEKNİK ANALİZ (Özellik #6)
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_derin:
+    st.markdown("## 🔍 Derin Teknik Analiz + Net Karar")
+    with st.expander("Bu sekme ne işe yarar?"):
+        st.markdown(
+            "Seçili hisse için **günlük + haftalık** grafiği okur: destek/direnç "
+            "seviyeleri, trend, hareketli ortalamalar, RSI/MACD/ADX. Sonunda "
+            "**net AL / TUT / SAT** kararı + giriş/hedef/stop/risk-ödül verir, "
+            "adım adım gerekçeyle."
+        )
+    if not sym:
+        st.info("👈 Sol taraftan bir hisse seç.")
+    else:
+        if st.button(f"🔍 {sym} derin analiz", key="derin_analiz"):
+            with st.spinner(f"{sym} analiz ediliyor..."):
+                from analysis.teknik_derin import analiz_et
+                if fr and fr.ok and fr.data is not None:
+                    k = analiz_et(fr.data, sym)
+                else:
+                    k = None
+            if k is None or not k.ok:
+                st.error(f"Analiz yapılamadı: {k.hata if k else 'veri yok'}")
+            else:
+                renk = {"AL": "🟢", "TUT": "🟡", "SAT": "🔴"}.get(k.karar, "⚪")
+                st.markdown(f"### {renk} KARAR: {k.karar}  (güven: {k.guven})")
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Fiyat", k.fiyat)
+                c2.metric("🎯 Kar-al", k.kar_al or "—")
+                c3.metric("🛑 Zarar-kes", k.zarar_kes or "—")
+                c4.metric("⚖️ R/R", f"1:{k.risk_odul}" if k.risk_odul else "—")
+
+                cc1, cc2 = st.columns(2)
+                with cc1:
+                    st.markdown("**🔺 Dirençler**")
+                    for d in k.direncler:
+                        st.write(f"{d.fiyat}  ·  {d.kaynak}  ·  %{d.uzaklik_pct:+.1f}")
+                with cc2:
+                    st.markdown("**🔻 Destekler**")
+                    for d in k.destekler:
+                        st.write(f"{d.fiyat}  ·  {d.kaynak}  ·  %{d.uzaklik_pct:+.1f}")
+
+                st.markdown("**📊 Gerekçeler (adım adım)**")
+                for g in k.gerekceler:
+                    st.write(g)
+                if k.haftalik_not:
+                    st.info("🗓️ " + k.haftalik_not)
+                for u in k.uyarilar:
+                    st.warning("⚑ " + u)
+                st.caption("⚠️ Teknik analiz çıktısıdır, geçmiş fiyata dayanır; "
+                           "yatırım tavsiyesi değildir.")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -603,6 +723,43 @@ with tab_halka_arz:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# 🧠 İŞLEM ALIŞKANLIKLARI (Özellik #2)
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_aliskanlik:
+    st.markdown("## 🧠 İşlem Alışkanlık Analizi")
+    with st.expander("Bu sekme ne işe yarar?"):
+        st.markdown(
+            "Son işlemlerini (Sanal Portföy alım-satımları) inceler: kazanma oranı, "
+            "ortalama kâr/zarar, tutuş süresi. **Tekrarlayan hataları ve duygusal "
+            "işlem davranışlarını** (revenge trade, erken kâr/geç zarar, aşırı işlem, "
+            "inatlaşma) tespit eder ve sana özel **3 net kural** üretir."
+        )
+    from analysis.islem_aliskanlik import analiz_et as _alis_analiz
+    a = _alis_analiz(config.DB_PATH, n=20)
+    if not a.ok:
+        st.info(a.not_)
+    else:
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Kazanma oranı", f"%{a.kazanma_orani}")
+        c2.metric("Ort. kâr", f"%{a.ort_kar_pct:+.2f}")
+        c3.metric("Ort. zarar", f"%{a.ort_zarar_pct:+.2f}")
+        c4.metric("Ort. tutuş", f"{a.ort_tutus_gun} gün")
+        st.caption(f"{a.kapali_islem} kapalı işlem · {a.islem_sayisi} toplam emir")
+
+        st.markdown("### 🔍 Tespit edilen alışkanlıklar")
+        for h in a.hatalar:
+            if h.startswith("✅"):
+                st.success(h)
+            else:
+                st.warning(h)
+
+        st.markdown("### 📌 Sana özel 3 kural (yarından itibaren)")
+        for i, k in enumerate(a.kurallar, 1):
+            st.info(f"{i}. {k}")
+        st.caption("⚠️ Analiz geçmiş işlem kayıtlarına dayanır; finansal tavsiye değildir.")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # 💼 SANAL PORTFÖY
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_portfoy:
@@ -771,14 +928,22 @@ uzun vadede bunu geçemez — bu sektörde bilinen bir gerçektir.
                 "Sonuçlar güvenilmez olabilir."
             )
 
+        from backtest.engine import STRATEJILER, oneri_uret
+        strat_ad = st.selectbox(
+            "Strateji seç",
+            list(STRATEJILER.keys()),
+            help="SMA Kesişim, RSI eşik veya MACD kesişim stratejisini test et",
+        )
+        strat_fn = STRATEJILER[strat_ad]
+
         test_orani = st.slider(
             "Test dönemi oranı",
             0.1, 0.5, 0.3, 0.05,
             help="Verinin bu kadarı test için ayrılır. %30 = son 3 yılın 1 yılı",
         )
         egitim, test = train_test_bol(df, test_orani)
-        r_e = backtest(egitim, strateji_sma_kesisim, costs=config.COSTS)
-        r_t = backtest(test,   strateji_sma_kesisim, costs=config.COSTS)
+        r_e = backtest(egitim, strat_fn, costs=config.COSTS)
+        r_t = backtest(test,   strat_fn, costs=config.COSTS)
 
         col_e, col_t = st.columns(2)
         for col, r, baslik in [
@@ -802,6 +967,10 @@ uzun vadede bunu geçemez — bu sektörde bilinen bir gerçektir.
             "Bu çok yaygındır ve dürüst bir sonuçtur. "
             "Geçmişteki performans geleceği garanti etmez."
         )
+
+        st.markdown("### 💡 İyileştirme önerileri (test dönemine göre)")
+        for o in oneri_uret(r_t):
+            st.write("• " + o)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1075,6 +1244,56 @@ with tab_risk:
         else:
             st.warning("En az 2 hisse için veri gerekiyor.")
 
+    # ── Portföy Zayıflık Analizi (Özellik #3) ──
+    st.divider()
+    st.markdown("### 🛡️ Portföy Zayıflık & Hedge Analizi")
+    st.caption(
+        "Hisse kodu ve ağırlık (%) gir; gizli yoğunlaşma, sektör riski, "
+        "birlikte düşme (korelasyon) riski ve hedge önerilerini çıkarır."
+    )
+    ornek = "GARAN:40, AKBNK:30, THYAO:30"
+    girdi = st.text_input("Portföy (kod:yüzde, virgülle)", value=ornek, key="zayiflik_girdi")
+    if st.button("🛡️ Zayıflık analizi yap", key="zayiflik_btn"):
+        try:
+            dagilim = {}
+            for parca in girdi.split(","):
+                if ":" in parca:
+                    k, v = parca.split(":")
+                    dagilim[k.strip().upper()] = float(v.strip())
+            if len(dagilim) < 1:
+                st.warning("En az bir hisse gir (örn. GARAN:50, THYAO:50).")
+            else:
+                with st.spinner("Fiyatlar ve korelasyon hesaplanıyor..."):
+                    closes = {}
+                    for kod in dagilim:
+                        rr = veri_getir(config.DB_PATH, kod + ".IS", period="6mo", interval="1d")
+                        if rr.ok:
+                            closes[kod] = rr.data["Close"]
+                    fiyat_df2 = pd.DataFrame(closes).dropna() if closes else None
+                    rapor = risk.portfoy_zayiflik(dagilim, fiyat_df2)
+
+                if rapor["yogunlasma"]:
+                    st.markdown("**🔴 Tek hisse yoğunlaşma**")
+                    for y in rapor["yogunlasma"]:
+                        st.warning(y)
+                if rapor["sektor_uyari"]:
+                    st.markdown("**🟠 Sektör yoğunlaşma**")
+                    for s in rapor["sektor_uyari"]:
+                        st.warning(s)
+                if rapor["birlikte_dusme_uyari"]:
+                    st.markdown("**🔗 Gizli korelasyon (birlikte düşme) riski**")
+                    for b in rapor["birlikte_dusme_uyari"]:
+                        st.error(b)
+                st.markdown("**✅ Riski azaltma önerileri**")
+                for o in rapor["oneriler"]:
+                    st.info(o)
+                with st.expander("🛡️ Hedge (düşüşe karşı korunma) stratejileri"):
+                    for h in rapor["hedge"]:
+                        st.write("• " + h)
+                st.caption("⚠️ Analiz geçmiş fiyat/dağılıma dayanır; yatırım tavsiyesi değildir.")
+        except Exception as exc:
+            st.error(f"Girdi hatalı: {exc}. Format: GARAN:40, AKBNK:30, THYAO:30")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 📚 GÖSTERGE REHBERİ
@@ -1291,6 +1510,25 @@ with tab_haber:
             "yfinance'tan). Her haber kaynağa ve yayın zamanına bağlıdır; veri "
             "yoksa açıkça belirtilir. Haberler ham bilgidir, tavsiye değildir."
         )
+
+    # ── Haber → İşlem Sinyali (Özellik #5) ──
+    if sym:
+        with st.spinner("Haber işlem etkisi analiz ediliyor..."):
+            from analysis.kap import haber_sinyali as _haber_sinyali
+            hsin = _haber_sinyali(sym, config.DB_PATH, config.HABER.get("rss_feeds"))
+        renk = {"Pozitif": "🟢", "Negatif": "🔴", "Nötr": "🟡"}.get(hsin.duygu, "⚪")
+        st.markdown(f"### {renk} {hsin.sembol} — Haber İşlem Sinyali: {hsin.duygu}")
+        if hsin.ok:
+            st.write(f"⏱️ **Kısa vade:** {hsin.kisa_vade}")
+            st.write(f"📅 **Uzun vade:** {hsin.uzun_vade}")
+            st.info("📊 " + hsin.beklenen_aralik)
+            if hsin.basliklar:
+                with st.expander("Başlıklar (duygu etiketli)"):
+                    for kaynak, bas, et in hsin.basliklar:
+                        st.write(f"{et} {bas[:90]} —{kaynak}")
+        else:
+            st.caption(hsin.not_)
+        st.divider()
 
     st.markdown(f"### {sym or '—'} ile ilgili haberler" if sym else "### Hisse haberleri")
     if not sym:

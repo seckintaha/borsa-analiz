@@ -142,6 +142,148 @@ def yfinance_haberleri(semboller: list[str], limit_per_hisse: int = 5) -> list[H
     return kayitlar
 
 
+# ── Haber → İşlem Sinyali (Özellik #5) ────────────────────────────────────────
+
+# Duygu sözlüğü — başlıktaki kelimelerden yön çıkarır (deterministik).
+_POZITIF_KELIME = [
+    "rekor", "artış", "arttı", "yüksel", "kâr", "kazanç", "büyüme", "anlaşma",
+    "sözleşme", "ihale kazan", "temettü", "bedelsiz", "yatırım", "teşvik",
+    "onay", "ihracat", "talep", "güçlü", "beklenti üstü", "not yükselt",
+    "geri alım", "satın al", "ortaklık", "lisans", "ruhsat",
+]
+_NEGATIF_KELIME = [
+    "düşüş", "düştü", "zarar", "kayıp", "iflas", "soruşturma", "ceza", "dava",
+    "gerileme", "kriz", "uyarı", "borç", "konkordato", "iptal", "durdur",
+    "not indir", "beklenti altı", "küçülme", "grev", "yaptırım", "vergi cezası",
+    "azal", "kötü", "risk",
+]
+
+
+@dataclass
+class HaberSinyali:
+    sembol: str
+    haber_sayisi: int
+    duygu: str               # "Pozitif" / "Negatif" / "Nötr"
+    duygu_skoru: int         # pozitif - negatif kelime farkı
+    kisa_vade: str
+    uzun_vade: str
+    beklenen_aralik: str     # ATR temelli tahmini hareket bandı
+    basliklar: list = field(default_factory=list)   # (kaynak, baslik, duygu)
+    ok: bool = True
+    not_: str = ""
+
+
+def _baslik_duygu(baslik: str) -> int:
+    b = baslik.lower()
+    poz = sum(1 for k in _POZITIF_KELIME if k in b)
+    neg = sum(1 for k in _NEGATIF_KELIME if k in b)
+    return poz - neg
+
+
+def haber_sinyali(sembol: str, db_path: str | None = None,
+                  rss_feeds: dict | None = None) -> HaberSinyali:
+    """
+    Bir hisse için haberleri çeker, duygu analizi yapar ve işlem etkisini yorumlar.
+
+    1. yfinance şirket haberleri + (varsa) RSS'te şirket adı geçen başlıklar
+    2. Deterministik duygu skoru (pozitif/negatif kelime)
+    3. Kısa/uzun vade yorumu + ATR temelli beklenen fiyat aralığı
+    """
+    kod = sembol.replace(".IS", "").upper()
+
+    # Haberleri topla
+    kayitlar = yfinance_haberleri([sembol], limit_per_hisse=8)
+
+    # RSS'te kod/şirket adı geçenleri de ekle
+    if rss_feeds:
+        try:
+            ps = piyasa_akisi(dict(rss_feeds), limit=8)
+            if ps.ok:
+                for k in ps.kayitlar:
+                    if kod.lower() in k.baslik.lower():
+                        k.sembol = kod
+                        kayitlar.append(k)
+        except Exception:
+            pass
+
+    if not kayitlar:
+        return HaberSinyali(kod, 0, "Nötr", 0,
+                            "Şirkete özel taze haber yok — fiyatı teknik belirler.",
+                            "Uzun vade için temel/bilanço takibi önerilir.",
+                            "Habersiz: belirgin haber kaynaklı hareket beklenmez.",
+                            ok=False, not_="Bu hisse için haber bulunamadı (yfinance/RSS).")
+
+    # Duygu
+    toplam_skor = 0
+    basliklar = []
+    for k in kayitlar[:10]:
+        d = _baslik_duygu(k.baslik)
+        toplam_skor += d
+        etiket = "🟢" if d > 0 else ("🔴" if d < 0 else "⚪")
+        basliklar.append((k.kaynak, k.baslik, etiket))
+
+    if toplam_skor >= 2:
+        duygu = "Pozitif"
+        kisa = "Haber akışı POZİTİF — kısa vadede alıcı ilgisi artabilir, hacimli yükseliş izle."
+        uzun = "Olumlu haberler kalıcıysa (bilanço/anlaşma) uzun vade trendi destekler."
+    elif toplam_skor <= -2:
+        duygu = "Negatif"
+        kisa = "Haber akışı NEGATİF — kısa vadede satış baskısı olabilir, stop'a dikkat."
+        uzun = "Olumsuz haber yapısalsa (borç/dava) uzun vade için risk; pozisyonu sorgula."
+    else:
+        duygu = "Nötr"
+        kisa = "Haber akışı KARIŞIK/NÖTR — yönü teknik göstergeler belirleyecek."
+        uzun = "Belirgin temel katalizör yok; uzun vade için trend ve bilanço takibi."
+
+    # ATR temelli beklenen aralık
+    beklenen = "Beklenen hareket aralığı: veri yok."
+    if db_path:
+        try:
+            from data.access import veri_getir
+            from analysis.indicators import add_indicators
+            fr = veri_getir(db_path, sembol, period="3mo", interval="1d")
+            if fr.ok and fr.data is not None and len(fr.data) > 20:
+                di = add_indicators(fr.data)
+                son = di.iloc[-1]
+                fiyat = float(son["Close"])
+                atr = float(son["ATR14"]) if pd.notna(son.get("ATR14")) else fiyat * 0.02
+                alt = round(fiyat - atr, 2)
+                ust = round(fiyat + atr, 2)
+                atr_pct = atr / fiyat * 100
+                beklenen = (f"Güncel {fiyat:.2f} · 1 günlük tipik dalga ±%{atr_pct:.1f} "
+                            f"(yaklaşık {alt}–{ust}). Haber sürprizinde bu aralık aşılabilir.")
+        except Exception:
+            pass
+
+    return HaberSinyali(
+        sembol=kod, haber_sayisi=len(kayitlar), duygu=duygu, duygu_skoru=toplam_skor,
+        kisa_vade=kisa, uzun_vade=uzun, beklenen_aralik=beklenen,
+        basliklar=basliklar, ok=True,
+    )
+
+
+def haber_sinyali_metni(hs: "HaberSinyali") -> str:
+    """HaberSinyali'ni Telegram/panel metnine çevirir."""
+    emoji = {"Pozitif": "🟢", "Negatif": "🔴", "Nötr": "🟡"}.get(hs.duygu, "⚪")
+    sat = [
+        f"📰 {hs.sembol} — HABER SİNYALİ",
+        f"{emoji} Genel duygu: {hs.duygu} (skor {hs.duygu_skoru:+d}, {hs.haber_sayisi} haber)",
+        "",
+        f"⏱️ Kısa vade: {hs.kisa_vade}",
+        f"📅 Uzun vade: {hs.uzun_vade}",
+        f"📊 {hs.beklenen_aralik}",
+    ]
+    if hs.basliklar:
+        sat += ["", "📋 Başlıklar:"]
+        for kaynak, bas, et in hs.basliklar[:6]:
+            sat.append(f"   {et} {bas[:85]} —{kaynak}")
+    if hs.not_:
+        sat += ["", f"ℹ️ {hs.not_}"]
+    sat += ["", "⚠️ Haber yorumu otomatik kelime analizidir; kesin değildir, "
+            "yatırım tavsiyesi değildir."]
+    return "\n".join(sat)
+
+
 # ── Piyasa RSS akışı ──────────────────────────────────────────────────────────
 
 def piyasa_akisi(rss_feeds: dict[str, str], limit: int = 5) -> HaberSonucu:

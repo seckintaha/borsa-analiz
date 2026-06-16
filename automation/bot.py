@@ -74,16 +74,128 @@ def gonder(token: str, chat_id: str, metin: str) -> bool:
 def cmd_yardim() -> str:
     return (
         "🤖 Borsa Bot — Komutlar\n\n"
+        "📋 PİYASA\n"
         "/durum     Anlık piyasa rejimi\n"
-        "/bist      Tüm BIST taraması (500 hisse)\n"
-        "/tarama    İzleme listesi AL/Kaçın özeti\n"
+        "/bist      Tüm BIST taraması (607 hisse)\n"
+        "/plan      Günlük işlem planı (saat saat)\n"
+        "/fikirler  Günün 5 işlem fikri (giriş/hedef/stop)\n\n"
+        "🔍 HİSSE\n"
+        "/analiz SEMBOL    Derin teknik analiz + AL/TUT/SAT\n"
+        "/haberetki SEMBOL Haberin işlem etkisi\n"
+        "   (örn: /analiz THYAO)\n\n"
+        "🧠 SEN\n"
+        "/aliskanlik İşlem alışkanlık analizi + 3 kural\n"
+        "/portfoy    Portföy zayıflık/korelasyon (panelden gir)\n\n"
+        "📰 DİĞER\n"
         "/haberler  Günün önemli haberleri\n"
         "/arzlar    Son halka arzlar (90 gün)\n"
-        "/rapor     Bugünün tam analiz raporu\n"
+        "/tarama    İzleme listesi özeti\n"
         "/watchlist Takip ettiğin hisseler\n"
         "/yardim    Bu liste\n\n"
-        "⚠️ Otomatik teknik taramadır, yatırım tavsiyesi değildir."
+        "⚠️ Teknik taramadır, yatırım tavsiyesi değildir."
     )
+
+
+def cmd_plan() -> str:
+    """Günlük işlem planı (Özellik #1)."""
+    try:
+        import config
+        from analysis.gunluk_plan import gunluk_plan_metni
+        return gunluk_plan_metni(config.DB_PATH, config.MACRO,
+                                 getattr(config, "HABER", None))
+    except Exception as exc:
+        return f"❌ Plan hatası: {exc}"
+
+
+def cmd_fikirler() -> str:
+    """Günün 5 işlem fikri (Özellik #7)."""
+    try:
+        import config
+        from analysis.fikirler import gunun_fikirleri, metin_ozet
+        ok, hata, fikirler = gunun_fikirleri(config.DB_PATH, n_fikir=5, aday_havuzu=20)
+        if not ok:
+            return f"❌ Fikir hatası: {hata}"
+        return metin_ozet(fikirler)
+    except Exception as exc:
+        return f"❌ Fikir hatası: {exc}"
+
+
+def cmd_analiz(sembol: str) -> str:
+    """Derin teknik analiz + net karar (Özellik #6)."""
+    try:
+        import config
+        from data.access import veri_getir
+        from analysis.teknik_derin import analiz_et, metin_ozet
+        if not sembol:
+            return "Kullanım: /analiz THYAO  (sembol gir)"
+        sem = sembol.upper()
+        if not sem.endswith(".IS") and sem.isalpha() and len(sem) <= 5:
+            sem += ".IS"
+        fr = veri_getir(config.DB_PATH, sem, period="1y", interval="1d")
+        if not fr.ok or fr.data is None:
+            return f"❌ {sem} verisi alınamadı: {fr.note}"
+        return metin_ozet(analiz_et(fr.data, sem))
+    except Exception as exc:
+        return f"❌ Analiz hatası: {exc}"
+
+
+def cmd_haberetki(sembol: str) -> str:
+    """Haberin işlem etkisi (Özellik #5)."""
+    try:
+        import config
+        from analysis.kap import haber_sinyali, haber_sinyali_metni
+        if not sembol:
+            return "Kullanım: /haberetki THYAO  (sembol gir)"
+        sem = sembol.upper()
+        if not sem.endswith(".IS") and sem.isalpha() and len(sem) <= 5:
+            sem += ".IS"
+        hs = haber_sinyali(sem, config.DB_PATH, config.HABER.get("rss_feeds"))
+        return haber_sinyali_metni(hs)
+    except Exception as exc:
+        return f"❌ Haber etki hatası: {exc}"
+
+
+def cmd_aliskanlik() -> str:
+    """İşlem alışkanlık analizi (Özellik #2)."""
+    try:
+        import config
+        from analysis.islem_aliskanlik import analiz_et, metin_ozet
+        return metin_ozet(analiz_et(config.DB_PATH, n=20))
+    except Exception as exc:
+        return f"❌ Alışkanlık analizi hatası: {exc}"
+
+
+def cmd_portfoy() -> str:
+    """Sanal portföyden zayıflık analizi (Özellik #3)."""
+    try:
+        import config
+        import pandas as pd
+        from data.storage import load_portfolio
+        from data.access import veri_getir
+        from analysis.risk import portfoy_zayiflik, portfoy_zayiflik_metni
+
+        p = load_portfolio(config.DB_PATH)
+        if not p.pozisyonlar:
+            return ("📭 Açık pozisyon yok. Panelden Sanal Portföy'e alım yap ya da "
+                    "korelasyon/zayıflık analizini panelden manuel dağılımla çalıştır.")
+        # Güncel fiyatlarla değer → dağılım %
+        kapanis = {}
+        for sym in p.pozisyonlar:
+            fr = veri_getir(config.DB_PATH, sym, period="6mo", interval="1d")
+            if fr.ok:
+                kapanis[sym.replace(".IS", "")] = fr.data["Close"]
+        degerler = {}
+        for sym, poz in p.pozisyonlar.items():
+            kod = sym.replace(".IS", "")
+            if kod in kapanis:
+                degerler[kod] = poz.adet * float(kapanis[kod].iloc[-1])
+        if not degerler:
+            return "❌ Pozisyon fiyatları alınamadı."
+        fiyat_df = pd.DataFrame(kapanis).dropna()
+        rapor = portfoy_zayiflik(degerler, fiyat_df)
+        return portfoy_zayiflik_metni(rapor)
+    except Exception as exc:
+        return f"❌ Portföy analizi hatası: {exc}"
 
 
 def cmd_durum() -> str:
@@ -323,29 +435,48 @@ def _isle(token: str, chat_id: str, mesaj: dict) -> None:
     if gelen_id != str(chat_id):
         return  # Yabancı mesaj — sessizce geç
 
-    metin = (mesaj.get("text") or "").strip().lower().split()[0] if mesaj.get("text") else ""
+    ham = (mesaj.get("text") or "").strip()
+    if not ham:
+        return
+    parcalar = ham.split()
+    komut = parcalar[0].lower()
+    arg = parcalar[1] if len(parcalar) > 1 else ""
 
-    if metin in ("/yardim", "/start", "/help"):
+    if komut in ("/yardim", "/start", "/help"):
         yanit = cmd_yardim()
-    elif metin == "/durum":
+    elif komut == "/durum":
         yanit = cmd_durum()
-    elif metin == "/tarama":
+    elif komut == "/tarama":
         yanit = cmd_tarama()
-    elif metin == "/bist":
-        yanit = "⏳ Tüm BIST taranıyor (500 hisse)..."
-        gonder(token, chat_id, yanit)
+    elif komut == "/bist":
+        gonder(token, chat_id, "⏳ Tüm BIST taranıyor (607 hisse)...")
         yanit = cmd_bist()
-    elif metin == "/haberler":
-        yanit = "⏳ Haberler çekiliyor..."
-        gonder(token, chat_id, yanit)
+    elif komut == "/plan":
+        gonder(token, chat_id, "⏳ Günlük plan hazırlanıyor...")
+        yanit = cmd_plan()
+    elif komut == "/fikirler":
+        gonder(token, chat_id, "⏳ Günün 5 fikri analiz ediliyor (biraz sürebilir)...")
+        yanit = cmd_fikirler()
+    elif komut == "/analiz":
+        gonder(token, chat_id, f"⏳ {arg or 'hisse'} analiz ediliyor...")
+        yanit = cmd_analiz(arg)
+    elif komut == "/haberetki":
+        gonder(token, chat_id, f"⏳ {arg or 'hisse'} haberleri taranıyor...")
+        yanit = cmd_haberetki(arg)
+    elif komut == "/aliskanlik":
+        yanit = cmd_aliskanlik()
+    elif komut == "/portfoy":
+        gonder(token, chat_id, "⏳ Portföy analiz ediliyor...")
+        yanit = cmd_portfoy()
+    elif komut == "/haberler":
+        gonder(token, chat_id, "⏳ Haberler çekiliyor...")
         yanit = cmd_haberler()
-    elif metin == "/arzlar":
-        yanit = "⏳ Halka arzlar kontrol ediliyor..."
-        gonder(token, chat_id, yanit)
+    elif komut == "/arzlar":
+        gonder(token, chat_id, "⏳ Halka arzlar kontrol ediliyor...")
         yanit = cmd_arzlar()
-    elif metin == "/rapor":
+    elif komut == "/rapor":
         yanit = cmd_rapor()
-    elif metin == "/watchlist":
+    elif komut == "/watchlist":
         yanit = cmd_watchlist()
     else:
         yanit = "Komut tanınmadı. /yardim ile komut listesine bak."

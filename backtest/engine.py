@@ -95,9 +95,68 @@ def train_test_bol(df: pd.DataFrame, test_orani: float = 0.3):
 
 
 # --- Örnek strateji (test ve demo için) ---
-def strateji_sma_kesisim(df: pd.DataFrame) -> pd.Series:
-    """50 günlük ortalama 200'ün üzerindeyse long, değilse nakit."""
+def strateji_sma_kesisim(df: pd.DataFrame, kisa: int = 50, uzun: int = 200) -> pd.Series:
+    """Kısa ortalama uzun ortalamanın üzerindeyse long, değilse nakit."""
     close = df["Close"].astype(float)
-    sma50 = close.rolling(50).mean()
-    sma200 = close.rolling(200).mean()
-    return (sma50 > sma200).astype(int)
+    return (close.rolling(kisa).mean() > close.rolling(uzun).mean()).astype(int)
+
+
+def strateji_rsi(df: pd.DataFrame, alt: int = 30, ust: int = 70) -> pd.Series:
+    """RSI `alt` altına inince long başlat, `ust` üstüne çıkınca nakde geç."""
+    from analysis.indicators import _rsi
+    close = df["Close"].astype(float)
+    rsi = _rsi(close, 14)
+    poz = pd.Series(0, index=close.index)
+    durum = 0
+    for i in range(len(rsi)):
+        r = rsi.iloc[i]
+        if pd.notna(r):
+            if r < alt:
+                durum = 1
+            elif r > ust:
+                durum = 0
+        poz.iloc[i] = durum
+    return poz
+
+
+def strateji_macd(df: pd.DataFrame) -> pd.Series:
+    """MACD sinyal çizgisinin üzerindeyken long, altındayken nakit."""
+    close = df["Close"].astype(float)
+    ema12 = close.ewm(span=12, adjust=False).mean()
+    ema26 = close.ewm(span=26, adjust=False).mean()
+    macd = ema12 - ema26
+    sinyal = macd.ewm(span=9, adjust=False).mean()
+    return (macd > sinyal).astype(int)
+
+
+# Panel/bot'tan ada göre strateji seçmek için kayıt
+STRATEJILER = {
+    "SMA Kesişim (50/200)": strateji_sma_kesisim,
+    "RSI (30/70)":          strateji_rsi,
+    "MACD Kesişim":         strateji_macd,
+}
+
+
+def oneri_uret(sonuc: BacktestSonuc) -> list[str]:
+    """Backtest sonucuna göre deterministik iyileştirme önerileri üretir."""
+    o = []
+    if sonuc.fark_pct < 0:
+        o.append("Strateji al-tut'u GEÇEMEDİ — bu hissede/dönemde pasif tutmak daha iyi olmuş. "
+                 "Farklı parametre veya hisse dene.")
+    else:
+        o.append(f"Strateji al-tut'u %{sonuc.fark_pct:+.1f} GEÇTİ — bu dönem işe yaramış "
+                 "(geçmiş, geleceği garanti etmez).")
+    if sonuc.kazanma_orani < 0.45:
+        o.append(f"Kazanma oranı düşük (%{sonuc.kazanma_orani*100:.0f}) — giriş sinyalini "
+                 "sıkılaştır (örn. RSI eşiğini düşür / trend filtresi ekle).")
+    if sonuc.max_dusus_pct < -25:
+        o.append(f"Maksimum düşüş yüksek (%{sonuc.max_dusus_pct:.0f}) — stop-loss eklemeyi "
+                 "veya pozisyon küçültmeyi düşün.")
+    if sonuc.sharpe < 0.5:
+        o.append(f"Sharpe düşük ({sonuc.sharpe}) — getiri, alınan riske değmiyor olabilir.")
+    elif sonuc.sharpe >= 1.0:
+        o.append(f"Sharpe iyi ({sonuc.sharpe}) — risk-ayarlı getiri tatmin edici.")
+    if sonuc.islem_sayisi > sonuc.gun_sayisi * 0.1:
+        o.append(f"Çok işlem var ({sonuc.islem_sayisi}) — komisyon yükü artar; "
+                 "daha az ama nitelikli sinyal hedefle.")
+    return o
