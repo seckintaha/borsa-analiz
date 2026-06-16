@@ -83,9 +83,13 @@ def cmd_yardim() -> str:
         "/analiz SEMBOL    Derin teknik analiz + AL/TUT/SAT\n"
         "/haberetki SEMBOL Haberin işlem etkisi\n"
         "   (örn: /analiz THYAO)\n\n"
-        "🧠 SEN\n"
-        "/aliskanlik İşlem alışkanlık analizi + 3 kural\n"
-        "/portfoy    Portföy zayıflık/korelasyon (panelden gir)\n\n"
+        "💼 PORTFÖY (Telegram'dan yönet)\n"
+        "/portfoyum  Pozisyonların + canlı kâr/zarar\n"
+        "/ekle SEMBOL ADET [FIYAT]   örn: /ekle THYAO 100 280\n"
+        "/sat SEMBOL [ADET]          örn: /sat THYAO 50\n"
+        "/portfoy     Zayıflık/korelasyon/hedge analizi\n"
+        "/aliskanlik  İşlem alışkanlık analizi + 3 kural\n"
+        "/portfoysil  Portföyü sıfırla\n\n"
         "📰 DİĞER\n"
         "/haberler  Günün önemli haberleri\n"
         "/arzlar    Son halka arzlar (90 gün)\n"
@@ -165,33 +169,223 @@ def cmd_aliskanlik() -> str:
         return f"❌ Alışkanlık analizi hatası: {exc}"
 
 
+def _coz_sembol(ham: str):
+    """
+    (guncel_fiyat, cozulen_sembol) — sembolü verildiği gibi, olmazsa .IS ekleyerek dener.
+    'THYAO' → THYAO.IS bulur; 'AAPL' bozulmaz. Veri yoksa (None, normalize) döner.
+    """
+    import config
+    from data.access import veri_getir
+    s = (ham or "").strip().upper()
+    if not s:
+        return None, s
+    adaylar = [s] + ([s + ".IS"] if "." not in s else [])
+    for aday in adaylar:
+        fr = veri_getir(config.DB_PATH, aday, period="5d", interval="1d")
+        if fr.ok and fr.data is not None and len(fr.data):
+            return float(fr.data["Close"].iloc[-1]), aday
+    return None, (adaylar[-1])
+
+
+def cmd_ekle(arglar: list[str]) -> str:
+    """/ekle SEMBOL ADET [FIYAT] [gerekçe] — portföye pozisyon ekler."""
+    try:
+        import config
+        from data.storage import save_islem
+        from datetime import datetime
+        if len(arglar) < 2:
+            return ("Kullanım: /ekle SEMBOL ADET [FIYAT] [gerekçe]\n"
+                    "Örnek: /ekle THYAO 100 280\n"
+                    "Fiyat yazmazsan güncel piyasa fiyatı kullanılır.")
+        ham_sembol = arglar[0]
+        try:
+            adet = float(arglar[1].replace(",", "."))
+        except ValueError:
+            return f"❌ Adet sayı olmalı: '{arglar[1]}'"
+        if adet <= 0:
+            return "❌ Adet pozitif olmalı."
+
+        canli, sembol = _coz_sembol(ham_sembol)
+        # Fiyat verilmişse onu kullan, yoksa canlı fiyat
+        fiyat = None
+        gerekce_parcalar = arglar[2:]
+        if len(arglar) >= 3:
+            try:
+                fiyat = float(arglar[2].replace(",", "."))
+                gerekce_parcalar = arglar[3:]
+            except ValueError:
+                fiyat = None  # 3. arg fiyat değil, gerekçenin parçası
+        if fiyat is None:
+            if canli is None:
+                return (f"❌ '{ham_sembol}' için canlı fiyat bulunamadı. "
+                        f"Fiyatı elle yaz: /ekle {ham_sembol} {arglar[1]} <fiyat>")
+            fiyat = round(canli, 2)
+
+        gerekce = " ".join(gerekce_parcalar).strip()
+        tarih = datetime.now().date().isoformat()
+        tutar = adet * fiyat
+        save_islem(config.DB_PATH, sembol, "AL", tarih, fiyat, adet, tutar, gerekce)
+
+        kod = sembol.replace(".IS", "")
+        canli_not = ""
+        if canli:
+            canli_not = f" · güncel {canli:,.2f}"
+        return (f"✅ Eklendi: {adet:g} adet {kod} @ {fiyat:,.2f} ₺"
+                f" (toplam {tutar:,.0f} ₺{canli_not})\n"
+                f"Portföyü gör: /portfoyum")
+    except Exception as exc:
+        return f"❌ Ekleme hatası: {exc}"
+
+
+def cmd_sat(arglar: list[str]) -> str:
+    """/sat SEMBOL [ADET] [FIYAT] — pozisyon azaltır/kapatır."""
+    try:
+        import config
+        from data.storage import save_islem
+        from portfolio.ozet import acik_pozisyonlar
+        from datetime import datetime
+        if len(arglar) < 1:
+            return ("Kullanım: /sat SEMBOL [ADET] [FIYAT]\n"
+                    "Örnek: /sat THYAO 50   (50 adet sat)\n"
+                    "Adet yazmazsan tüm pozisyon satılır.")
+        canli, sembol = _coz_sembol(arglar[0])
+        pos = acik_pozisyonlar(config.DB_PATH)
+        if sembol not in pos:
+            kod = sembol.replace(".IS", "")
+            return f"❌ Portföyünde {kod} yok. /portfoyum ile kontrol et."
+
+        mevcut = pos[sembol]["adet"]
+        adet = mevcut
+        if len(arglar) >= 2:
+            try:
+                adet = float(arglar[1].replace(",", "."))
+            except ValueError:
+                return f"❌ Adet sayı olmalı: '{arglar[1]}'"
+        adet = min(adet, mevcut)
+        if adet <= 0:
+            return "❌ Satılacak adet pozitif olmalı."
+
+        fiyat = None
+        if len(arglar) >= 3:
+            try:
+                fiyat = float(arglar[2].replace(",", "."))
+            except ValueError:
+                fiyat = None
+        if fiyat is None:
+            if canli is None:
+                return f"❌ '{arglar[0]}' güncel fiyatı yok. Fiyatı elle yaz."
+            fiyat = round(canli, 2)
+
+        tarih = datetime.now().date().isoformat()
+        tutar = adet * fiyat
+        save_islem(config.DB_PATH, sembol, "SAT", tarih, fiyat, adet, tutar, "telegram /sat")
+
+        kod = sembol.replace(".IS", "")
+        kalan = mevcut - adet
+        return (f"✅ Satıldı: {adet:g} adet {kod} @ {fiyat:,.2f} ₺ "
+                f"(toplam {tutar:,.0f} ₺)\n"
+                f"Kalan: {kalan:g} adet\n/portfoyum")
+    except Exception as exc:
+        return f"❌ Satış hatası: {exc}"
+
+
+def cmd_portfoyum() -> str:
+    """/portfoyum — açık pozisyonlar + canlı kâr/zarar."""
+    try:
+        import config
+        from portfolio.ozet import acik_pozisyonlar
+        from data.access import veri_getir
+
+        pos = acik_pozisyonlar(config.DB_PATH)
+        if not pos:
+            return ("📭 Portföyün boş.\n\n"
+                    "Hisse eklemek için:\n/ekle THYAO 100 280\n"
+                    "(100 adet THYAO, 280 ₺'den)")
+
+        sat = [f"💼 PORTFÖYÜM ({len(pos)} hisse)", ""]
+        toplam_maliyet = 0.0
+        toplam_deger = 0.0
+        satir_veriler = []
+        for sembol, p in pos.items():
+            kod = sembol.replace(".IS", "")
+            adet, maliyet = p["adet"], p["maliyet"]
+            fr = veri_getir(config.DB_PATH, sembol, period="5d", interval="1d")
+            guncel = float(fr.data["Close"].iloc[-1]) if (fr.ok and fr.data is not None and len(fr.data)) else None
+            mal_tutar = adet * maliyet
+            toplam_maliyet += mal_tutar
+            if guncel:
+                deger = adet * guncel
+                toplam_deger += deger
+                kz_pct = (guncel - maliyet) / maliyet * 100 if maliyet else 0
+                kz_tl = (guncel - maliyet) * adet
+                isaret = "🟢" if kz_pct >= 0 else "🔴"
+                satir_veriler.append(
+                    f"{isaret} {kod}: {adet:g} ad · maliyet {maliyet:,.2f} → "
+                    f"güncel {guncel:,.2f}\n"
+                    f"     K/Z: %{kz_pct:+.1f} ({kz_tl:+,.0f} ₺)")
+            else:
+                toplam_deger += mal_tutar
+                satir_veriler.append(
+                    f"⚪ {kod}: {adet:g} ad · maliyet {maliyet:,.2f} (güncel fiyat yok)")
+
+        sat += satir_veriler
+        toplam_kz = toplam_deger - toplam_maliyet
+        toplam_kz_pct = (toplam_kz / toplam_maliyet * 100) if toplam_maliyet else 0
+        isaret_t = "🟢" if toplam_kz >= 0 else "🔴"
+        sat += [
+            "",
+            "━━━━━━━━━━━━━━",
+            f"💰 Maliyet: {toplam_maliyet:,.0f} ₺",
+            f"📊 Güncel değer: {toplam_deger:,.0f} ₺",
+            f"{isaret_t} Toplam K/Z: %{toplam_kz_pct:+.1f} ({toplam_kz:+,.0f} ₺)",
+            "",
+            "Analiz: /portfoy (risk)  ·  /aliskanlik",
+            "Düzenle: /ekle  ·  /sat  ·  /portfoysil",
+        ]
+        return "\n".join(sat)
+    except Exception as exc:
+        return f"❌ Portföy görüntüleme hatası: {exc}"
+
+
+def cmd_portfoysil(arg: str = "") -> str:
+    """/portfoysil [onay] — tüm portföyü siler (onay gerekir)."""
+    try:
+        import config
+        from data.storage import temizle_portfolio
+        if arg.strip().lower() not in ("onay", "evet", "sil"):
+            return ("⚠️ Tüm portföyünü silmek üzeresin (geri alınamaz).\n"
+                    "Onaylamak için: /portfoysil onay")
+        temizle_portfolio(config.DB_PATH)
+        return "🗑️ Portföy tamamen silindi. /ekle ile yeniden oluşturabilirsin."
+    except Exception as exc:
+        return f"❌ Silme hatası: {exc}"
+
+
 def cmd_portfoy() -> str:
-    """Sanal portföyden zayıflık analizi (Özellik #3)."""
+    """Portföyden zayıflık/korelasyon/hedge analizi (Özellik #3)."""
     try:
         import config
         import pandas as pd
-        from data.storage import load_portfolio
+        from portfolio.ozet import acik_pozisyonlar
         from data.access import veri_getir
         from analysis.risk import portfoy_zayiflik, portfoy_zayiflik_metni
 
-        p = load_portfolio(config.DB_PATH)
-        if not p.pozisyonlar:
-            return ("📭 Açık pozisyon yok. Panelden Sanal Portföy'e alım yap ya da "
-                    "korelasyon/zayıflık analizini panelden manuel dağılımla çalıştır.")
+        pos = acik_pozisyonlar(config.DB_PATH)
+        if not pos:
+            return ("📭 Portföyün boş. Önce hisse ekle:\n"
+                    "/ekle THYAO 100 280\nSonra /portfoy ile analiz et.")
         # Güncel fiyatlarla değer → dağılım %
         kapanis = {}
-        for sym in p.pozisyonlar:
-            fr = veri_getir(config.DB_PATH, sym, period="6mo", interval="1d")
-            if fr.ok:
-                kapanis[sym.replace(".IS", "")] = fr.data["Close"]
         degerler = {}
-        for sym, poz in p.pozisyonlar.items():
-            kod = sym.replace(".IS", "")
-            if kod in kapanis:
-                degerler[kod] = poz.adet * float(kapanis[kod].iloc[-1])
+        for sembol, p in pos.items():
+            kod = sembol.replace(".IS", "")
+            fr = veri_getir(config.DB_PATH, sembol, period="6mo", interval="1d")
+            if fr.ok and fr.data is not None:
+                kapanis[kod] = fr.data["Close"]
+                degerler[kod] = p["adet"] * float(fr.data["Close"].iloc[-1])
         if not degerler:
             return "❌ Pozisyon fiyatları alınamadı."
-        fiyat_df = pd.DataFrame(kapanis).dropna()
+        fiyat_df = pd.DataFrame(kapanis).dropna() if len(kapanis) >= 2 else None
         rapor = portfoy_zayiflik(degerler, fiyat_df)
         return portfoy_zayiflik_metni(rapor)
     except Exception as exc:
@@ -441,6 +635,7 @@ def _isle(token: str, chat_id: str, mesaj: dict) -> None:
     parcalar = ham.split()
     komut = parcalar[0].lower()
     arg = parcalar[1] if len(parcalar) > 1 else ""
+    arglar = parcalar[1:]   # komuttan sonraki tüm argümanlar
 
     if komut in ("/yardim", "/start", "/help"):
         yanit = cmd_yardim()
@@ -465,6 +660,15 @@ def _isle(token: str, chat_id: str, mesaj: dict) -> None:
         yanit = cmd_haberetki(arg)
     elif komut == "/aliskanlik":
         yanit = cmd_aliskanlik()
+    elif komut == "/ekle":
+        yanit = cmd_ekle(arglar)
+    elif komut == "/sat":
+        yanit = cmd_sat(arglar)
+    elif komut in ("/portfoyum", "/portfoy_um"):
+        gonder(token, chat_id, "⏳ Portföyün güncel fiyatlarla hesaplanıyor...")
+        yanit = cmd_portfoyum()
+    elif komut == "/portfoysil":
+        yanit = cmd_portfoysil(arg)
     elif komut == "/portfoy":
         gonder(token, chat_id, "⏳ Portföy analiz ediliyor...")
         yanit = cmd_portfoy()

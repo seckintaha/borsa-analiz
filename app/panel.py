@@ -63,6 +63,24 @@ def _veri(sym: str, period: str, interval: str):
                       bayat_gun=config.VERI["bayat_gun"],
                       bosluk_gun=config.VERI["bosluk_gun"])
 
+def _coz_fiyat(sym: str):
+    """
+    (guncel_fiyat, cozulen_sembol) döndürür.
+    Önce sembolü verildiği gibi dener; bulamazsa '.IS' ekleyerek dener
+    (kullanıcı 'THYAO' yazsa da BIST hissesini bulur, 'AAPL' bozulmaz).
+    Veri yoksa (None, sym) döner — uydurmaz.
+    """
+    sym = (sym or "").strip().upper()
+    if not sym:
+        return None, sym
+    adaylar = [sym] + ([sym + ".IS"] if "." not in sym else [])
+    for s in adaylar:
+        r = _veri(s, "5d", "1d")
+        if r and r.ok and r.data is not None and len(r.data):
+            return float(r.data["Close"].iloc[-1]), s
+    return None, sym
+
+
 @st.cache_data(ttl=300)
 def _liste_ozet(wl_key: str) -> list[dict]:
     symbols = [s for s in wl_key.split(",") if s]
@@ -771,7 +789,14 @@ with tab_portfoy:
 
     p = st.session_state.portfolio
     guncel_f = float(df["Close"].iloc[-1]) if (fr and fr.ok) else None
-    gf = {sym: guncel_f} if (guncel_f and sym) else {}
+    # TÜM açık pozisyonların güncel fiyatını çek (yalnız seçili hisseyi değil!)
+    gf = {}
+    for _ps in p.pozisyonlar:
+        _pf, _ = _coz_fiyat(_ps)
+        if _pf:
+            gf[_ps] = _pf
+    if sym and guncel_f:
+        gf.setdefault(sym, guncel_f)
     ozet = p.ozet(gf)
 
     c1, c2, c3, c4 = st.columns(4)
@@ -810,9 +835,20 @@ with tab_portfoy:
     ca1, ca2, ca3 = st.columns([2, 2, 1])
     with ca1:
         al_sym   = st.text_input("Sembol", value=sym or "",
-                                 key="al_sym", placeholder="Ör: THYAO.IS")
-        al_fiyat = st.number_input("Fiyat (₺)", min_value=0.01,
-                                   value=guncel_f or 1.0, step=0.01, key="al_fiyat")
+                                 key="al_sym", placeholder="Ör: THYAO veya THYAO.IS")
+        _canli_al, _al_coz = _coz_fiyat(al_sym)
+        if "al_fiyat" not in st.session_state:
+            st.session_state["al_fiyat"] = round(_canli_al, 2) if _canli_al else 1.0
+        if _al_coz and st.session_state.get("_al_sym_son") != _al_coz and _canli_al:
+            st.session_state["_al_sym_son"] = _al_coz
+            st.session_state["al_fiyat"] = round(_canli_al, 2)
+        al_fiyat = st.number_input("Fiyat (₺)", min_value=0.01, step=0.01, key="al_fiyat")
+        if al_sym.strip():
+            if _canli_al:
+                st.caption(f"📡 {_al_coz} güncel: {_canli_al:,.2f} ₺ (otomatik dolduruldu)")
+            else:
+                st.caption(f"⚠️ '{al_sym.strip().upper()}' için canlı fiyat bulunamadı — "
+                           "sembolü kontrol et veya fiyatı elle gir.")
     with ca2:
         al_tutar = st.number_input(
             "Tutar (₺)", min_value=100.0,
@@ -827,7 +863,7 @@ with tab_portfoy:
         if st.button("✅ Satın Al", use_container_width=True):
             try:
                 tarih   = pd.Timestamp.now().date().isoformat()
-                s_upper = al_sym.strip().upper()
+                s_upper = (_al_coz or al_sym.strip().upper())
                 adet    = p.al(s_upper, al_fiyat, tarih,
                                tutar=al_tutar, gerekce=al_gerekce)
                 save_islem(DB, s_upper, "AL", tarih, al_fiyat,
@@ -844,8 +880,16 @@ with tab_portfoy:
             sat_sym   = st.selectbox("Pozisyon seçin",
                                      list(p.pozisyonlar.keys()), key="sat_sym")
         with cs2:
+            _canli_sat, _ = _coz_fiyat(sat_sym)
+            if "sat_fiyat" not in st.session_state:
+                st.session_state["sat_fiyat"] = round(_canli_sat, 2) if _canli_sat else 1.0
+            if sat_sym and st.session_state.get("_sat_sym_son") != sat_sym and _canli_sat:
+                st.session_state["_sat_sym_son"] = sat_sym
+                st.session_state["sat_fiyat"] = round(_canli_sat, 2)
             sat_fiyat = st.number_input("Satış Fiyatı (₺)", min_value=0.01,
-                                        value=guncel_f or 1.0, step=0.01, key="sat_fiyat")
+                                        step=0.01, key="sat_fiyat")
+            if _canli_sat:
+                st.caption(f"📡 {sat_sym} güncel: {_canli_sat:,.2f} ₺")
         with cs3:
             st.write(""); st.write("")
             if st.button("🔴 Sat", use_container_width=True):
