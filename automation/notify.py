@@ -511,6 +511,14 @@ def main() -> None:
         print(" `python -m automation.notify --chat-id` çalıştırın.)")
         return
 
+    # Aylık özet modu (her ayın 1'inde LaunchAgent ile çağrılır)
+    if "--aylik" in sys.argv:
+        from analysis.aylik_ozet import aylik_ozet_metni
+        metin = aylik_ozet_metni(config.DB_PATH, config.MACRO)
+        ok, hata = telegram_gonder(metin)
+        print("✅ Aylık özet gönderildi." if ok else f"ℹ️ Gönderilemedi: {hata}")
+        return
+
     mod = "gunici" if "--gunici" in sys.argv else "eod"
 
     # Hem sabah (gunici) hem akşam (eod) artık tüm BIST'i tarar (607 hisse).

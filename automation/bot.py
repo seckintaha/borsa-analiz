@@ -78,6 +78,7 @@ def cmd_yardim() -> str:
         "/durum     Anlık piyasa rejimi\n"
         "/bist      Tüm BIST taraması (607 hisse)\n"
         "/plan      Günlük işlem planı (saat saat)\n"
+        "/aylik     Aylık özet (portföy + piyasa)\n"
         "/fikirler  Günün 5 işlem fikri (giriş/hedef/stop)\n\n"
         "🔍 HİSSE\n"
         "/analiz SEMBOL    Derin teknik analiz + AL/TUT/SAT\n"
@@ -109,6 +110,16 @@ def cmd_plan() -> str:
                                  getattr(config, "HABER", None))
     except Exception as exc:
         return f"❌ Plan hatası: {exc}"
+
+
+def cmd_aylik() -> str:
+    """Aylık özet raporu."""
+    try:
+        import config
+        from analysis.aylik_ozet import aylik_ozet_metni
+        return aylik_ozet_metni(config.DB_PATH, config.MACRO)
+    except Exception as exc:
+        return f"❌ Aylık özet hatası: {exc}"
 
 
 def cmd_fikirler() -> str:
@@ -649,6 +660,9 @@ def _isle(token: str, chat_id: str, mesaj: dict) -> None:
     elif komut == "/plan":
         gonder(token, chat_id, "⏳ Günlük plan hazırlanıyor...")
         yanit = cmd_plan()
+    elif komut == "/aylik":
+        gonder(token, chat_id, "⏳ Aylık özet hazırlanıyor (biraz sürebilir)...")
+        yanit = cmd_aylik()
     elif komut == "/fikirler":
         gonder(token, chat_id, "⏳ Günün 5 fikri analiz ediliyor (biraz sürebilir)...")
         yanit = cmd_fikirler()
