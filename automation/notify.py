@@ -334,8 +334,8 @@ def tam_bist_rapor_metni(
     # AL adayları
     n_al = t.get("guclu_al", 0) + t.get("al_adayi", 0)
     if adaylar:
-        sat.append(f"🟢 AL ADAYLARI ({n_al} hisse)")
-        for i, r in enumerate(adaylar[:8], 1):
+        sat.append(f"🟢 AL ADAYLARI ({n_al} hisse — ilk 10 gösteriliyor)")
+        for i, r in enumerate(adaylar[:10], 1):
             isaret = "🔥" if r.aksiyon == "Güçlü AL adayı" else "⭐"
             deg_str = f"%{r.degisim_pct:+.1f}" if r.degisim_pct is not None else "—"
             fiy_str = f"{r.fiyat:,.2f}" if r.fiyat else "—"
@@ -513,10 +513,11 @@ def main() -> None:
 
     mod = "gunici" if "--gunici" in sys.argv else "eod"
 
-    # --tam bayrağı: tüm BIST TradingView taraması (varsayılan EOD için)
-    tam_mod = "--tam" in sys.argv or mod == "eod"
+    # Hem sabah (gunici) hem akşam (eod) artık tüm BIST'i tarar (607 hisse).
+    # Eski watchlist-only mod yalnızca --watchlist bayrağıyla zorlanırsa kullanılır.
+    watchlist_mod = "--watchlist" in sys.argv
 
-    if tam_mod:
+    if not watchlist_mod:
         sonuc = tam_bist_bildirim(
             db_path=config.DB_PATH,
             macro_cfg=config.MACRO,
