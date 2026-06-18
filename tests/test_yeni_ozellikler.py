@@ -197,6 +197,23 @@ def test_ayin_oneri_ozet_cumle():
     assert "ucuz" in cumle and "teknik" in cumle
 
 
+# ── sektör + eğitim (saf) ─────────────────────────────────────────────────────
+
+def test_sektor_tr_cevirisi():
+    from analysis.sektor import _tr
+    assert _tr("Finance") == "Finans/Bankacılık"
+    assert _tr("Bilinmeyen") == "Bilinmeyen"   # haritada yoksa aynen
+
+
+def test_egitim_metinleri_dolu():
+    from analysis.egitim import ekonomik_gostergeler, kuresel_olaylar, risk_yonetimi
+    assert "FAİZ" in ekonomik_gostergeler()
+    assert "KORUNMA" in kuresel_olaylar()
+    import config
+    ry = risk_yonetimi(config.DB_PATH)
+    assert "POZİSYON" in ry and "STOP" in ry
+
+
 # ── alarm (portföy stop/hedef/zarar) ──────────────────────────────────────────
 
 def test_alarm_bos_portfoy(gecici_db):

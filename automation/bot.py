@@ -81,11 +81,14 @@ def cmd_yardim() -> str:
         "/aylik     Aylık özet (portföy + piyasa)\n"
         "/oneriler  Ayın hisse önerileri (teknik+temel)\n"
         "/deger     Değer yatırımı taraması (ucuz+kârlı)\n"
+        "/sektorler Sektör analizi (aylık performans)\n"
+        "/duyarlilik Korku/açgözlülük endeksi\n"
         "/fikirler  Günün 5 işlem fikri (giriş/hedef/stop)\n\n"
         "🔍 HİSSE\n"
         "/analiz SEMBOL    Derin teknik analiz + AL/TUT/SAT\n"
         "/temel SEMBOL     Temel analiz (F/K, ROE, marj)\n"
         "/buyume SEMBOL    Büyüme mi temettü hissesi mi\n"
+        "/sektor <ad>      Bir sektördeki hisseler\n"
         "/haberetki SEMBOL Haberin işlem etkisi\n"
         "   (örn: /analiz THYAO)\n\n"
         "💼 PORTFÖY (Telegram'dan yönet)\n"
@@ -94,8 +97,13 @@ def cmd_yardim() -> str:
         "/sat SEMBOL [ADET]          örn: /sat THYAO 50\n"
         "/alarmlar    Stop/hedef/zarar alarmları\n"
         "/portfoy     Zayıflık/korelasyon/hedge analizi\n"
+        "/cesitlendir Çeşitlendirme önerisi (eksik sektör)\n"
         "/aliskanlik  İşlem alışkanlık analizi + 3 kural\n"
         "/portfoysil  Portföyü sıfırla\n\n"
+        "📚 EĞİTİM\n"
+        "/riskyonetim Risk yönetimi (stop/pozisyon/çeşit)\n"
+        "/ekonomi     Ekonomik göstergeler → borsa\n"
+        "/kuresel     Küresel olaylar + korunma\n\n"
         "📰 DİĞER\n"
         "/haberler  Günün önemli haberleri\n"
         "/arzlar    Son halka arzlar (90 gün)\n"
@@ -167,6 +175,74 @@ def cmd_buyume(sembol: str) -> str:
         return buyume_temettu(sembol)
     except Exception as exc:
         return f"❌ Büyüme analizi hatası: {exc}"
+
+
+def cmd_sektorler() -> str:
+    """Tüm sektörlerin aylık performans özeti (#1)."""
+    try:
+        from analysis.sektor import sektor_genel
+        return sektor_genel()
+    except Exception as exc:
+        return f"❌ Sektör analizi hatası: {exc}"
+
+
+def cmd_sektor(arama: str) -> str:
+    """Bir sektördeki hisseler (#1)."""
+    try:
+        from analysis.sektor import sektor_detay
+        if not arama:
+            return "Kullanım: /sektor <ad>  (örn: /sektor banka, /sektor enerji)"
+        return sektor_detay(arama)
+    except Exception as exc:
+        return f"❌ Sektör hatası: {exc}"
+
+
+def cmd_cesitlendir() -> str:
+    """Portföy çeşitlendirme önerisi (#2)."""
+    try:
+        import config
+        from analysis.sektor import cesitlendirme_onerisi
+        return cesitlendirme_onerisi(config.DB_PATH)
+    except Exception as exc:
+        return f"❌ Çeşitlendirme hatası: {exc}"
+
+
+def cmd_duyarlilik() -> str:
+    """Piyasa duyarlılığı / korku-açgözlülük (#7)."""
+    try:
+        import config
+        from analysis.duyarlilik import piyasa_duyarliligi
+        return piyasa_duyarliligi(config.DB_PATH, config.MACRO)
+    except Exception as exc:
+        return f"❌ Duyarlılık hatası: {exc}"
+
+
+def cmd_riskyonetim() -> str:
+    """Risk yönetimi rehberi + senin sermayenle örnek (#3)."""
+    try:
+        import config
+        from analysis.egitim import risk_yonetimi
+        return risk_yonetimi(config.DB_PATH)
+    except Exception as exc:
+        return f"❌ Risk yönetimi hatası: {exc}"
+
+
+def cmd_ekonomi() -> str:
+    """Ekonomik göstergeler → borsa etkisi (#5)."""
+    try:
+        from analysis.egitim import ekonomik_gostergeler
+        return ekonomik_gostergeler()
+    except Exception as exc:
+        return f"❌ Ekonomi hatası: {exc}"
+
+
+def cmd_kuresel() -> str:
+    """Küresel olaylar + korunma stratejileri (#10)."""
+    try:
+        from analysis.egitim import kuresel_olaylar
+        return kuresel_olaylar()
+    except Exception as exc:
+        return f"❌ Küresel hatası: {exc}"
 
 
 def cmd_alarmlar() -> str:
@@ -738,6 +814,24 @@ def _isle(token: str, chat_id: str, mesaj: dict) -> None:
     elif komut == "/buyume":
         gonder(token, chat_id, f"⏳ {arg or 'hisse'} büyüme/temettü analizi...")
         yanit = cmd_buyume(arg)
+    elif komut in ("/sektorler", "/sektörler"):
+        gonder(token, chat_id, "⏳ Sektör analizi hazırlanıyor...")
+        yanit = cmd_sektorler()
+    elif komut in ("/sektor", "/sektör"):
+        gonder(token, chat_id, "⏳ Sektör inceleniyor...")
+        yanit = cmd_sektor(arg)
+    elif komut in ("/cesitlendir", "/çeşitlendir"):
+        gonder(token, chat_id, "⏳ Çeşitlendirme önerisi hazırlanıyor...")
+        yanit = cmd_cesitlendir()
+    elif komut in ("/duyarlilik", "/duyarlılık"):
+        gonder(token, chat_id, "⏳ Piyasa duyarlılığı hesaplanıyor...")
+        yanit = cmd_duyarlilik()
+    elif komut in ("/riskyonetim", "/risk"):
+        yanit = cmd_riskyonetim()
+    elif komut == "/ekonomi":
+        yanit = cmd_ekonomi()
+    elif komut in ("/kuresel", "/küresel"):
+        yanit = cmd_kuresel()
     elif komut == "/fikirler":
         gonder(token, chat_id, "⏳ Günün 5 fikri analiz ediliyor (biraz sürebilir)...")
         yanit = cmd_fikirler()
