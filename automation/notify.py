@@ -530,12 +530,24 @@ def main() -> None:
         print(" `python -m automation.notify --chat-id` çalıştırın.)")
         return
 
-    # Aylık özet modu (her ayın 1'inde LaunchAgent ile çağrılır)
+    # Aylık özet modu (her ayın 1'inde LaunchAgent ile çağrılır):
+    # 1) aylık özet (portföy + piyasa), 2) ayın hisse önerileri (teknik+temel)
     if "--aylik" in sys.argv:
         from analysis.aylik_ozet import aylik_ozet_metni
-        metin = aylik_ozet_metni(config.DB_PATH, config.MACRO)
-        ok, hata = telegram_gonder(metin)
-        print("✅ Aylık özet gönderildi." if ok else f"ℹ️ Gönderilemedi: {hata}")
+        from analysis.ayin_onerileri import ayin_onerileri, ayin_onerileri_metni
+
+        ozet = aylik_ozet_metni(config.DB_PATH, config.MACRO)
+        ok1, h1 = telegram_gonder(ozet)
+
+        ok2, h2 = ok1, ""
+        try:
+            o_ok, o_hata, oneriler = ayin_onerileri(config.DB_PATH, n=10)
+            oneri_metni = ayin_onerileri_metni(oneriler, o_hata)
+            ok2, h2 = telegram_gonder(oneri_metni)
+        except Exception as exc:
+            ok2, h2 = False, str(exc)
+
+        print(f"✅ Aylık özet: {'OK' if ok1 else h1} · Öneriler: {'OK' if ok2 else h2}")
         return
 
     mod = "gunici" if "--gunici" in sys.argv else "eod"

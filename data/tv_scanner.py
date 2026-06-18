@@ -154,6 +154,88 @@ def tv_tara(
     return True, "", satirlar
 
 
+_TEMEL_KOLONLAR = [
+    "name", "description", "close", "change",
+    "price_earnings_ttm",          # F/K (P/E)
+    "price_book_fq",               # PD/DD (P/B)
+    "dividend_yield_recent",       # temettü verimi %
+    "return_on_equity",            # ROE %
+    "earnings_per_share_basic_ttm",  # hisse başı kâr (EPS)
+    "net_margin",                  # net kâr marjı %
+    "revenue_growth",              # gelir büyümesi % (yıllık)
+    "market_cap_basic",            # piyasa değeri
+    "sector",                      # sektör (İngilizce)
+]
+
+
+@dataclass
+class TVTemel:
+    sembol: str
+    ad: str
+    fiyat: Optional[float]
+    degisim_pct: Optional[float]
+    fk: Optional[float]            # F/K
+    pddd: Optional[float]          # PD/DD
+    temettu_verim: Optional[float] # %
+    roe: Optional[float]           # %
+    eps: Optional[float]
+    net_marj: Optional[float]      # %
+    gelir_buyume: Optional[float]  # %
+    piyasa_degeri: Optional[float]
+    sektor: str
+
+
+def tv_temel_tara(limit: int = 1000, timeout: int = 20,
+                  tickers: list[str] | None = None) -> tuple[bool, str, list[TVTemel]]:
+    """
+    TradingView'dan BIST temel verilerini çeker (F/K, PD/DD, temettü, ROE...).
+    tickers verilirse sadece o sembolleri (örn ['BIST:THYAO']) çeker.
+    Dönüş: (basarili, hata, liste)
+    """
+    payload = {
+        "filter": [],
+        "options": {"lang": "tr"},
+        "markets": ["turkey"],
+        "symbols": {"query": {"types": ["stock"]}, "tickers": tickers or []},
+        "columns": _TEMEL_KOLONLAR,
+        "sort": {"sortBy": "market_cap_basic", "sortOrder": "desc"},
+        "range": [0, min(limit, 1000)],
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+        "Content-Type": "application/json",
+        "Origin": "https://www.tradingview.com",
+        "Referer": "https://www.tradingview.com/",
+    }
+    try:
+        istek = urllib.request.Request(_TV_SCAN_URL, data=json.dumps(payload).encode(),
+                                       headers=headers)
+        with urllib.request.urlopen(istek, timeout=timeout) as yanit:
+            data = json.loads(yanit.read())
+    except Exception as exc:
+        return False, f"TradingView erişim hatası: {exc}", []
+
+    out: list[TVTemel] = []
+    for item in data.get("data", []):
+        d = item.get("d", [])
+        if len(d) < len(_TEMEL_KOLONLAR):
+            d = d + [None] * (len(_TEMEL_KOLONLAR) - len(d))
+        sembol = str(d[0] or "").replace("BIST:", "") + ".IS"
+        out.append(TVTemel(
+            sembol=sembol,
+            ad=str(d[1] or sembol),
+            fiyat=_guvence(d[2]), degisim_pct=_guvence(d[3]),
+            fk=_guvence(d[4]), pddd=_guvence(d[5]),
+            temettu_verim=_guvence(d[6]), roe=_guvence(d[7]),
+            eps=_guvence(d[8]), net_marj=_guvence(d[9]),
+            gelir_buyume=_guvence(d[10]), piyasa_degeri=_guvence(d[11]),
+            sektor=str(d[12] or "—"),
+        ))
+    if not out:
+        return False, "TradingView'dan temel veri gelmedi", []
+    return True, "", out
+
+
 def sinyal_puan(s: TVSatir) -> int:
     """
     Teknik sinyal puanı hesaplar (deterministik, 0-100 arası değil ham skor).

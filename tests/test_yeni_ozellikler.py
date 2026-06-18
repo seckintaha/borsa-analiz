@@ -177,6 +177,26 @@ def test_acik_pozisyonlar_kapanan_silinir(gecici_db):
     assert "AAA.IS" not in acik_pozisyonlar(gecici_db)   # tamamı satıldı
 
 
+# ── temel analiz (yorum eşikleri — saf) ───────────────────────────────────────
+
+def test_temel_fk_yorum():
+    from analysis.temel import _fk_yorum, _pddd_yorum, _roe_yorum
+    assert "zarar" in _fk_yorum(-5)              # negatif F/K
+    assert "düşük" in _fk_yorum(6)               # ucuz
+    assert "yüksek" in _fk_yorum(40)             # pahalı
+    assert "defter değerinin altında" in _pddd_yorum(0.8)
+    assert "güçlü" in _roe_yorum(25)
+    assert _fk_yorum(None) == ""                 # veri yoksa boş
+
+
+def test_ayin_oneri_ozet_cumle():
+    from analysis.ayin_onerileri import _ozet_cumle
+    class _T: fk = 5; roe = 25; pddd = 1.0; temettu_verim = 2
+    class _R: ema_durumu = "Trend Yukarı"; macd_sinyal = "Alış"
+    cumle = _ozet_cumle(_T(), _R())
+    assert "ucuz" in cumle and "teknik" in cumle
+
+
 # ── alarm (portföy stop/hedef/zarar) ──────────────────────────────────────────
 
 def test_alarm_bos_portfoy(gecici_db):

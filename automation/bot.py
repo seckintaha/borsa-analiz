@@ -79,9 +79,13 @@ def cmd_yardim() -> str:
         "/bist      Tüm BIST taraması (607 hisse)\n"
         "/plan      Günlük işlem planı (saat saat)\n"
         "/aylik     Aylık özet (portföy + piyasa)\n"
+        "/oneriler  Ayın hisse önerileri (teknik+temel)\n"
+        "/deger     Değer yatırımı taraması (ucuz+kârlı)\n"
         "/fikirler  Günün 5 işlem fikri (giriş/hedef/stop)\n\n"
         "🔍 HİSSE\n"
         "/analiz SEMBOL    Derin teknik analiz + AL/TUT/SAT\n"
+        "/temel SEMBOL     Temel analiz (F/K, ROE, marj)\n"
+        "/buyume SEMBOL    Büyüme mi temettü hissesi mi\n"
         "/haberetki SEMBOL Haberin işlem etkisi\n"
         "   (örn: /analiz THYAO)\n\n"
         "💼 PORTFÖY (Telegram'dan yönet)\n"
@@ -121,6 +125,48 @@ def cmd_aylik() -> str:
         return aylik_ozet_metni(config.DB_PATH, config.MACRO)
     except Exception as exc:
         return f"❌ Aylık özet hatası: {exc}"
+
+
+def cmd_ayinonerileri() -> str:
+    """Ayın hisse önerileri — teknik + temel birleşik."""
+    try:
+        import config
+        from analysis.ayin_onerileri import ayin_onerileri, ayin_onerileri_metni
+        ok, hata, oneriler = ayin_onerileri(config.DB_PATH, n=10)
+        return ayin_onerileri_metni(oneriler, hata)
+    except Exception as exc:
+        return f"❌ Ayın önerileri hatası: {exc}"
+
+
+def cmd_temel(sembol: str) -> str:
+    """Tek hisse temel analiz (F/K, PD/DD, ROE...)."""
+    try:
+        from analysis.temel import tek_hisse_temel
+        if not sembol:
+            return "Kullanım: /temel THYAO"
+        return tek_hisse_temel(sembol)
+    except Exception as exc:
+        return f"❌ Temel analiz hatası: {exc}"
+
+
+def cmd_deger() -> str:
+    """Değer yatırımı taraması (ucuz + kârlı hisseler)."""
+    try:
+        from analysis.temel import deger_taramasi
+        return deger_taramasi(n=10)
+    except Exception as exc:
+        return f"❌ Değer taraması hatası: {exc}"
+
+
+def cmd_buyume(sembol: str) -> str:
+    """Büyüme mi temettü hissesi mi sınıflandırması."""
+    try:
+        from analysis.temel import buyume_temettu
+        if not sembol:
+            return "Kullanım: /buyume THYAO"
+        return buyume_temettu(sembol)
+    except Exception as exc:
+        return f"❌ Büyüme analizi hatası: {exc}"
 
 
 def cmd_alarmlar() -> str:
@@ -680,6 +726,18 @@ def _isle(token: str, chat_id: str, mesaj: dict) -> None:
     elif komut in ("/alarmlar", "/alarm"):
         gonder(token, chat_id, "⏳ Portföy alarmları kontrol ediliyor...")
         yanit = cmd_alarmlar()
+    elif komut in ("/ayinonerileri", "/ayinhisseleri", "/oneriler"):
+        gonder(token, chat_id, "⏳ Ayın önerileri: 607 hisse teknik+temel analizden geçiyor (1-2 dk)...")
+        yanit = cmd_ayinonerileri()
+    elif komut == "/temel":
+        gonder(token, chat_id, f"⏳ {arg or 'hisse'} temel analizi...")
+        yanit = cmd_temel(arg)
+    elif komut == "/deger":
+        gonder(token, chat_id, "⏳ Değer yatırımı taraması...")
+        yanit = cmd_deger()
+    elif komut == "/buyume":
+        gonder(token, chat_id, f"⏳ {arg or 'hisse'} büyüme/temettü analizi...")
+        yanit = cmd_buyume(arg)
     elif komut == "/fikirler":
         gonder(token, chat_id, "⏳ Günün 5 fikri analiz ediliyor (biraz sürebilir)...")
         yanit = cmd_fikirler()
