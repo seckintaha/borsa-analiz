@@ -87,6 +87,8 @@ def cmd_yardim() -> str:
         "🔍 HİSSE\n"
         "/analiz SEMBOL    Derin teknik analiz + AL/TUT/SAT\n"
         "/temel SEMBOL     Temel analiz (F/K, ROE, marj)\n"
+        "/kalite SEMBOL    Finansal kalite skoru + tuzak kontrolü\n"
+        "/sinyaltest SEMBOL Sinyal geçmişte işe yaramış mı (edge)\n"
         "/buyume SEMBOL    Büyüme mi temettü hissesi mi\n"
         "/sektor <ad>      Bir sektördeki hisseler\n"
         "/haberetki SEMBOL Haberin işlem etkisi\n"
@@ -175,6 +177,29 @@ def cmd_buyume(sembol: str) -> str:
         return buyume_temettu(sembol)
     except Exception as exc:
         return f"❌ Büyüme analizi hatası: {exc}"
+
+
+def cmd_kalite(sembol: str) -> str:
+    """Finansal kalite skoru + değer tuzağı kontrolü."""
+    try:
+        from analysis.kalite import kalite_tek
+        if not sembol:
+            return "Kullanım: /kalite THYAO"
+        return kalite_tek(sembol)
+    except Exception as exc:
+        return f"❌ Kalite analizi hatası: {exc}"
+
+
+def cmd_sinyaltest(sembol: str) -> str:
+    """Sinyal edge testi — AL sinyali bu hissede geçmişte işe yaramış mı."""
+    try:
+        import config
+        from analysis.sinyal_test import sinyal_edge_testi
+        if not sembol:
+            return "Kullanım: /sinyaltest THYAO"
+        return sinyal_edge_testi(config.DB_PATH, sembol)
+    except Exception as exc:
+        return f"❌ Sinyal testi hatası: {exc}"
 
 
 def cmd_sektorler() -> str:
@@ -814,6 +839,12 @@ def _isle(token: str, chat_id: str, mesaj: dict) -> None:
     elif komut == "/buyume":
         gonder(token, chat_id, f"⏳ {arg or 'hisse'} büyüme/temettü analizi...")
         yanit = cmd_buyume(arg)
+    elif komut == "/kalite":
+        gonder(token, chat_id, f"⏳ {arg or 'hisse'} finansal kalite analizi...")
+        yanit = cmd_kalite(arg)
+    elif komut in ("/sinyaltest", "/edge"):
+        gonder(token, chat_id, f"⏳ {arg or 'hisse'} sinyal edge testi (geçmiş analizi)...")
+        yanit = cmd_sinyaltest(arg)
     elif komut in ("/sektorler", "/sektörler"):
         gonder(token, chat_id, "⏳ Sektör analizi hazırlanıyor...")
         yanit = cmd_sektorler()

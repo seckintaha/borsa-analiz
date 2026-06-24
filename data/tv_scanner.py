@@ -236,6 +236,91 @@ def tv_temel_tara(limit: int = 1000, timeout: int = 20,
     return True, "", out
 
 
+_KALITE_KOLONLAR = [
+    "name", "description", "close", "sector",
+    "price_earnings_ttm",                 # F/K
+    "price_book_fq",                      # PD/DD
+    "return_on_equity",                   # ROE %
+    "return_on_invested_capital",         # ROIC %
+    "net_margin",                         # net marj %
+    "free_cash_flow_margin_ttm",          # serbest nakit akışı marjı %
+    "debt_to_equity",                     # borç/özkaynak
+    "current_ratio",                      # cari oran (likidite)
+    "total_revenue_yoy_growth_ttm",       # gelir büyümesi % (yıllık)
+    "net_income_yoy_growth_ttm",          # net kâr büyümesi % (yıllık)
+    "dividend_yield_recent",              # temettü verimi %
+    "market_cap_basic",                   # piyasa değeri
+    "Perf.1M",                            # 1 aylık fiyat performansı %
+]
+
+
+@dataclass
+class TVKalite:
+    sembol: str
+    ad: str
+    fiyat: Optional[float]
+    sektor: str
+    fk: Optional[float]
+    pddd: Optional[float]
+    roe: Optional[float]
+    roic: Optional[float]
+    net_marj: Optional[float]
+    fcf_marj: Optional[float]
+    borc_ozkaynak: Optional[float]
+    cari_oran: Optional[float]
+    gelir_buyume: Optional[float]
+    net_kar_buyume: Optional[float]
+    temettu: Optional[float]
+    piyasa_degeri: Optional[float]
+    perf_1m: Optional[float]
+
+
+def tv_kalite_tara(limit: int = 1000, timeout: int = 20,
+                   tickers: list[str] | None = None) -> tuple[bool, str, list[TVKalite]]:
+    """Kapsamlı temel + kalite verisi (borç, nakit, büyüme, kârlılık) çeker."""
+    payload = {
+        "filter": [],
+        "options": {"lang": "tr"},
+        "markets": ["turkey"],
+        "symbols": {"query": {"types": ["stock"]}, "tickers": tickers or []},
+        "columns": _KALITE_KOLONLAR,
+        "sort": {"sortBy": "market_cap_basic", "sortOrder": "desc"},
+        "range": [0, min(limit, 1000)],
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+        "Content-Type": "application/json",
+        "Origin": "https://www.tradingview.com",
+        "Referer": "https://www.tradingview.com/",
+    }
+    try:
+        istek = urllib.request.Request(_TV_SCAN_URL, data=json.dumps(payload).encode(),
+                                       headers=headers)
+        with urllib.request.urlopen(istek, timeout=timeout) as yanit:
+            data = json.loads(yanit.read())
+    except Exception as exc:
+        return False, f"TradingView erişim hatası: {exc}", []
+
+    out: list[TVKalite] = []
+    for item in data.get("data", []):
+        d = item.get("d", [])
+        if len(d) < len(_KALITE_KOLONLAR):
+            d = d + [None] * (len(_KALITE_KOLONLAR) - len(d))
+        sembol = str(d[0] or "").replace("BIST:", "") + ".IS"
+        out.append(TVKalite(
+            sembol=sembol, ad=str(d[1] or sembol), fiyat=_guvence(d[2]),
+            sektor=str(d[3] or "—"), fk=_guvence(d[4]), pddd=_guvence(d[5]),
+            roe=_guvence(d[6]), roic=_guvence(d[7]), net_marj=_guvence(d[8]),
+            fcf_marj=_guvence(d[9]), borc_ozkaynak=_guvence(d[10]),
+            cari_oran=_guvence(d[11]), gelir_buyume=_guvence(d[12]),
+            net_kar_buyume=_guvence(d[13]), temettu=_guvence(d[14]),
+            piyasa_degeri=_guvence(d[15]), perf_1m=_guvence(d[16]),
+        ))
+    if not out:
+        return False, "TradingView'dan kalite verisi gelmedi", []
+    return True, "", out
+
+
 def sinyal_puan(s: TVSatir) -> int:
     """
     Teknik sinyal puanı hesaplar (deterministik, 0-100 arası değil ham skor).

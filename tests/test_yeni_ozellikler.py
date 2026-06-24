@@ -189,12 +189,47 @@ def test_temel_fk_yorum():
     assert _fk_yorum(None) == ""                 # veri yoksa boş
 
 
-def test_ayin_oneri_ozet_cumle():
-    from analysis.ayin_onerileri import _ozet_cumle
-    class _T: fk = 5; roe = 25; pddd = 1.0; temettu_verim = 2
-    class _R: ema_durumu = "Trend Yukarı"; macd_sinyal = "Alış"
-    cumle = _ozet_cumle(_T(), _R())
-    assert "ucuz" in cumle and "teknik" in cumle
+def test_ayin_oneri_ozet():
+    from analysis.ayin_onerileri import _ozet
+    class _K: fk = 8
+    class _KS: skor = 80
+    cumle = _ozet(_K(), _KS(), 10)   # yüksek kalite + ucuz + endeksi yendi
+    assert "kalite" in cumle and "ucuz" in cumle
+
+
+# ── kalite skoru + sinyal edge (saf mantık) ───────────────────────────────────
+
+def test_kalite_yuksek_dusuk():
+    from analysis.kalite import kalite_skoru
+    from data.tv_scanner import TVKalite
+    iyi = TVKalite("X.IS", "X", 100, "Tech", fk=10, pddd=1.2, roe=25, roic=18,
+                   net_marj=20, fcf_marj=15, borc_ozkaynak=0.4, cari_oran=2.0,
+                   gelir_buyume=30, net_kar_buyume=25, temettu=3, piyasa_degeri=1e9, perf_1m=5)
+    kotu = TVKalite("Y.IS", "Y", 10, "Steel", fk=5, pddd=0.5, roe=2, roic=1,
+                    net_marj=-5, fcf_marj=-2, borc_ozkaynak=4, cari_oran=0.6,
+                    gelir_buyume=-10, net_kar_buyume=-90, temettu=0, piyasa_degeri=1e9, perf_1m=-5)
+    s_iyi = kalite_skoru(iyi)
+    s_kotu = kalite_skoru(kotu)
+    assert s_iyi.skor > s_kotu.skor
+    assert s_iyi.skor >= 70
+    assert s_kotu.deger_tuzagi      # ucuz + bozuk → değer tuzağı
+
+
+def test_kalite_veri_yoksa():
+    from analysis.kalite import kalite_skoru
+    from data.tv_scanner import TVKalite
+    bos = TVKalite("Z.IS", "Z", None, "—", None, None, None, None, None, None,
+                   None, None, None, None, None, None, None)
+    assert kalite_skoru(bos).etiket == "veri yok"
+
+
+def test_sinyal_al_kosulu_seri():
+    from analysis.sinyal_test import _al_kosulu
+    from analysis.indicators import add_indicators
+    df = _ohlcv(n=250, egim=0.5, oynaklik=3.0)   # dalgalı trend
+    kosul = _al_kosulu(add_indicators(df))
+    assert kosul.dtype == bool
+    assert len(kosul) == len(df)      # her bar için bool koşul (mantık geçerli)
 
 
 # ── sektör + eğitim (saf) ─────────────────────────────────────────────────────
