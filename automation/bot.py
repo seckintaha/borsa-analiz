@@ -902,6 +902,90 @@ def _isle(token: str, chat_id: str, mesaj: dict) -> None:
     gonder(token, chat_id, yanit)
 
 
+# ── Zamanlı bildirim (launchd'siz — bot içi zamanlayıcı) ──────────────────────
+# macOS'ta launchd venv Python'u çalıştırırken "Resource deadlock avoided" ile
+# çöküyor. Bu yüzden günlük/aylık bildirimleri, zaten 7/24 çalışan bot süreci
+# gönderir. Bot çalıştığı sürece (Mac açıkken) bildirimler zamanında gider.
+# Mac kapalıysa, açıldığında aynı gün içindeki pencerede telafi eder.
+
+_DURUM_DOSYA = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "raporlar", "zamanli_durum.json")
+
+
+def _durum_oku() -> dict:
+    try:
+        with open(_DURUM_DOSYA, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {"gonderilen": []}
+
+
+def _durum_yaz(d: dict) -> None:
+    try:
+        os.makedirs(os.path.dirname(_DURUM_DOSYA), exist_ok=True)
+        with open(_DURUM_DOSYA, "w", encoding="utf-8") as f:
+            json.dump(d, f)
+    except Exception as exc:
+        print(f"[zamanli] durum yazılamadı: {exc}")
+
+
+def _gunici_bildirim_gonder() -> None:
+    import config
+    from automation.notify import tam_bist_bildirim
+    tam_bist_bildirim(
+        db_path=config.DB_PATH, macro_cfg=config.MACRO,
+        tg_cfg=config.TELEGRAM, screen_cfg=config.SCREEN,
+        haber_cfg=getattr(config, "HABER", None), mod="gunici")
+
+
+def _aylik_bildirim_gonder() -> None:
+    import config
+    from automation.notify import telegram_gonder
+    from analysis.aylik_ozet import aylik_ozet_metni
+    from analysis.ayin_onerileri import ayin_onerileri, ayin_onerileri_metni
+    telegram_gonder(aylik_ozet_metni(config.DB_PATH, config.MACRO))
+    ok, hata, oneriler = ayin_onerileri(config.DB_PATH, n=10)
+    telegram_gonder(ayin_onerileri_metni(oneriler, hata))
+
+
+def _zamanli_gonderim() -> None:
+    """Her döngüde çağrılır; zamanı gelen bildirimleri (bir kez) gönderir."""
+    now = datetime.now()
+    durum = _durum_oku()
+    gonderilen = set(durum.get("gonderilen", []))
+    bugun = now.strftime("%Y-%m-%d")
+    ay = now.strftime("%Y-%m")
+    degisti = False
+
+    islenecek = []
+    # Günlük — hafta içi (Pzt-Cum). Sabah penceresi 10:00-14:00, akşam 18:00-23:00.
+    # Pencere: Mac o saatte kapalıysa açılınca aynı gün telafi eder.
+    if now.weekday() < 5:
+        if 10 <= now.hour < 14:
+            islenecek.append((f"gunici-sabah-{bugun}", _gunici_bildirim_gonder))
+        if 18 <= now.hour < 23:
+            islenecek.append((f"gunici-aksam-{bugun}", _gunici_bildirim_gonder))
+    # Aylık — ayın 1'i, 10:30 sonrası (23:00'a kadar telafi penceresi)
+    if now.day == 1 and (now.hour > 10 or (now.hour == 10 and now.minute >= 30)) and now.hour < 23:
+        islenecek.append((f"aylik-{ay}", _aylik_bildirim_gonder))
+
+    for anahtar, fn in islenecek:
+        if anahtar in gonderilen:
+            continue
+        try:
+            print(f"[{now:%H:%M:%S}] Zamanlı bildirim gönderiliyor: {anahtar}")
+            fn()
+            gonderilen.add(anahtar)
+            degisti = True
+        except Exception as exc:
+            print(f"[zamanli] {anahtar} gönderilemedi: {exc}")
+
+    if degisti:
+        durum["gonderilen"] = sorted(gonderilen)[-60:]   # eski kayıtları buda
+        _durum_yaz(durum)
+
+
 def calistir() -> None:
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")
@@ -924,13 +1008,15 @@ def calistir() -> None:
             if not veri.get("ok"):
                 print(f"getUpdates hatası: {veri}")
                 time.sleep(_POLL_INTERVAL)
-                continue
+            else:
+                for guncelleme in veri.get("result", []):
+                    offset = guncelleme["update_id"] + 1
+                    mesaj = guncelleme.get("message")
+                    if mesaj:
+                        _isle(token, chat_id, mesaj)
 
-            for guncelleme in veri.get("result", []):
-                offset = guncelleme["update_id"] + 1
-                mesaj = guncelleme.get("message")
-                if mesaj:
-                    _isle(token, chat_id, mesaj)
+            # Her döngüde zamanlı bildirimleri kontrol et (launchd'siz)
+            _zamanli_gonderim()
 
         except KeyboardInterrupt:
             print("\nBot durduruldu.")

@@ -191,10 +191,11 @@ def test_temel_fk_yorum():
 
 def test_ayin_oneri_ozet():
     from analysis.ayin_onerileri import _ozet
-    class _K: fk = 8
+    class _K: fk = 8; net_kar_buyume = 20
     class _KS: skor = 80
-    cumle = _ozet(_K(), _KS(), 10)   # yüksek kalite + ucuz + endeksi yendi
-    assert "kalite" in cumle and "ucuz" in cumle
+    class _S: rsi = 44
+    cumle = _ozet(_K(), _KS(), 0.3, _S())   # kalite + dip bölge + ucuz + RSI düşük
+    assert "kalite" in cumle.lower() and "uçmamış" in cumle
 
 
 # ── kalite skoru + sinyal edge (saf mantık) ───────────────────────────────────
