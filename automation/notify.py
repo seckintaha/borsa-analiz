@@ -29,6 +29,15 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 _TG_API = "https://api.telegram.org/bot{token}/sendMessage"
+_TG_MAX = 4000   # Telegram sınırı ~4096; güvenli pay bırakılır
+
+
+def _kirp(metin: str, limit: int = _TG_MAX) -> str:
+    """Mesajı Telegram sınırına kırpar; kesildiyse açıkça belirtir (sessiz kesme yok)."""
+    if len(metin) <= limit:
+        return metin
+    not_ = "\n\n…(mesaj uzunluğu nedeniyle kısaltıldı)"
+    return metin[:limit - len(not_)] + not_
 
 
 # ── Telegram gönderici ────────────────────────────────────────────────────────
@@ -42,7 +51,7 @@ def _tek_gonder(token: str, chat_id: str, metin: str, timeout: float) -> tuple[b
     """Tek bir chat_id'ye mesaj gönderir."""
     veri = urllib.parse.urlencode({
         "chat_id": chat_id,
-        "text": metin[:4000],
+        "text": _kirp(metin),
         "disable_web_page_preview": "true",
     }).encode()
     try:
@@ -183,8 +192,7 @@ def gunluk_ozet_metni(satirlar, rejim_satiri: str, zaman: str,
         "Skorlar geçmiş fiyat/momentuma dayanır, sık yanılır; kendi araştırmanı yap.",
     ]
 
-    metin = "\n".join(sat)
-    return metin[:4000]            # Telegram tek mesaj sınırı (~4096)
+    return _kirp("\n".join(sat))   # Telegram tek mesaj sınırı (~4096)
 
 
 # ── Uçtan uca günlük bildirim ─────────────────────────────────────────────────
@@ -388,7 +396,7 @@ def tam_bist_rapor_metni(
         "Kaynak: TradingView scanner + RSS · Kap.org.tr resmi API değil.",
     ]
 
-    return "\n".join(sat)[:4000]
+    return _kirp("\n".join(sat))
 
 
 def tam_bist_bildirim(

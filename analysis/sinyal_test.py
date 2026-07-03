@@ -31,11 +31,11 @@ def _al_kosulu(df_i: pd.DataFrame) -> pd.Series:
 
 
 def sinyal_edge_testi(db_path: str, sembol: str, ileri_gun: int = 20) -> str:
-    kod = sembol.replace(".IS", "").upper()
-    if not kod.endswith(".IS"):
-        sem = kod + ".IS"
-    else:
-        sem = kod
+    sem = (sembol or "").strip().upper()
+    # BIST kısa kodu ise .IS ekle; global sembol (AAPL, nokta içerenler) bozulmaz.
+    if not sem.endswith(".IS") and sem.isalpha() and len(sem) <= 5:
+        sem += ".IS"
+    kod = sem.replace(".IS", "")
     fr = veri_getir(db_path, sem, period="2y", interval="1d")
     if not fr.ok or fr.data is None or len(fr.data) < 120:
         return (f"❌ {kod}: edge testi için yeterli geçmiş veri yok "

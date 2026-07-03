@@ -25,11 +25,29 @@ class KaliteSonuc:
     metrikler: dict = field(default_factory=dict)
 
 
+# Banka/finans/sigorta sektörleri doğal olarak yüksek borç/özkaynak ve düşük
+# cari orana sahiptir (iş modeli gereği). Bu metrikleri onlara uygulamak haksız
+# cezadır; bu sektörlerde borç ve cari oran bileşenleri atlanır.
+_FINANS_SEKTORLERI = (
+    "finance", "financial", "bank", "insurance", "banka", "sigorta",
+    "finans", "holding", "leasing", "factoring", "gayrimenkul yatırım",
+    "real estate investment", "reit",
+)
+
+
+def _finans_sektoru_mu(sektor: Optional[str]) -> bool:
+    if not sektor:
+        return False
+    s = sektor.lower()
+    return any(anahtar in s for anahtar in _FINANS_SEKTORLERI)
+
+
 def kalite_skoru(k: TVKalite) -> KaliteSonuc:
     """Tek bir hissenin kalite skorunu hesaplar."""
     puan = 0.0
     agirlik = 0.0   # toplanan max puan (veri olan bileşenler)
     g = []
+    finans = _finans_sektoru_mu(k.sektor)
 
     def ekle(kosul_puan, max_puan, art_mesaj, eks_mesaj, kosul_iyi):
         nonlocal puan, agirlik
@@ -73,17 +91,20 @@ def kalite_skoru(k: TVKalite) -> KaliteSonuc:
         else:
             ekle(1, 10, "", f"FCF marj %{k.fcf_marj:.0f} (nakit üretmiyor)", False)
 
-    # Borç/özkaynak (kaldıraç riski) — banka/finans doğal olarak yüksek, hafif değerlendir
-    if k.borc_ozkaynak is not None:
+    # Borç/özkaynak (kaldıraç riski) — banka/finans/sigorta iş modeli gereği doğal
+    # olarak yüksek kaldıraçlıdır; bu sektörlerde bileşen atlanır (haksız ceza yok).
+    if k.borc_ozkaynak is not None and not finans:
         if k.borc_ozkaynak < 1:
             ekle(15, 15, f"borç/özkaynak {k.borc_ozkaynak:.2f} (düşük borç)", "", True)
         elif k.borc_ozkaynak < 2:
             ekle(9, 15, f"borç/özkaynak {k.borc_ozkaynak:.2f}", "", True)
         else:
             ekle(2, 15, "", f"borç/özkaynak {k.borc_ozkaynak:.2f} (yüksek kaldıraç)", False)
+    elif finans and k.borc_ozkaynak is not None:
+        g.append("ℹ️ Finans sektörü: yüksek kaldıraç normaldir, borç bileşeni atlandı.")
 
-    # Likidite — cari oran
-    if k.cari_oran is not None:
+    # Likidite — cari oran (finans sektörü için anlamsız, atlanır)
+    if k.cari_oran is not None and not finans:
         if k.cari_oran >= 1.5:
             ekle(8, 8, f"cari oran {k.cari_oran:.2f} (sağlam likidite)", "", True)
         elif k.cari_oran >= 1:
@@ -121,7 +142,8 @@ def kalite_skoru(k: TVKalite) -> KaliteSonuc:
     ucuz = (k.fk is not None and 0 < k.fk < 8) or (k.pddd is not None and k.pddd < 0.8)
     bozuk = (skor < 45 or
              (k.net_kar_buyume is not None and k.net_kar_buyume < -20) or
-             (k.borc_ozkaynak is not None and k.borc_ozkaynak > 3))
+             # Yüksek borç sinyali sadece finans-dışı sektörler için geçerli.
+             (not finans and k.borc_ozkaynak is not None and k.borc_ozkaynak > 3))
     deger_tuzagi = bool(ucuz and bozuk)
     if deger_tuzagi:
         g.insert(0, "🪤 DEĞER TUZAĞI RİSKİ: ucuz görünüyor ama temeller zayıf/bozuluyor")

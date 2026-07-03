@@ -51,6 +51,20 @@ def test_teknik_derin_yetersiz_veri():
     assert not k.ok                               # 30 bardan az → ok=False
 
 
+def test_teknik_derin_risk_odul_makul_sinirda():
+    """Stop çok yakın olsa bile R/R absürt (ör. 1:8.93) çıkmamalı; ≤5.0 sınırlı."""
+    from analysis.teknik_derin import analiz_et
+    # Farklı oynaklık/seed'lerde AL sinyali üretip R/R'ı hep 5.0 altında bekle
+    for seed in range(8):
+        df = _ohlcv(n=250, egim=0.8, oynaklik=0.4, seed=seed)
+        k = analiz_et(df, "TEST.IS")
+        if k.ok and k.risk_odul is not None:
+            assert k.risk_odul <= 5.0            # üst sınır uygulanmış
+            assert k.risk_odul > 0
+            # Stop gerçekten fiyata çok yakın olmamalı (mikro risk yasak)
+            assert k.giris - k.zarar_kes > 0
+
+
 def test_destek_direnc_fiyatin_iki_tarafinda():
     from analysis.teknik_derin import destek_direnc
     df = _ohlcv(n=200, egim=0.3)
@@ -216,12 +230,49 @@ def test_kalite_yuksek_dusuk():
     assert s_kotu.deger_tuzagi      # ucuz + bozuk → değer tuzağı
 
 
+def test_kalite_finans_sektoru_borc_cezasiz():
+    """Banka/finans doğal yüksek borç/düşük cari orandan CEZA GÖRMEMELİ."""
+    from analysis.kalite import kalite_skoru
+    from data.tv_scanner import TVKalite
+    ortak = dict(fiyat=10, fk=6, pddd=0.9, roe=22, roic=None, net_marj=25,
+                 fcf_marj=None, cari_oran=0.3, gelir_buyume=20, net_kar_buyume=18,
+                 temettu=5, piyasa_degeri=1e10, perf_1m=2)
+    banka = TVKalite("GARAN.IS", "Garanti", sektor="Finance", borc_ozkaynak=6, **ortak)
+    sanayi = TVKalite("XXXX.IS", "Sanayi", sektor="Steel", borc_ozkaynak=6, **ortak)
+    s_banka = kalite_skoru(banka)
+    s_sanayi = kalite_skoru(sanayi)
+    # Aynı (yüksek) borçla banka, sanayiye göre cezalanmadığı için daha yüksek skorlu
+    assert s_banka.skor > s_sanayi.skor
+    # Banka yüksek borçla değer tuzağı olarak işaretlenmemeli (finans muafiyeti)
+    assert not s_banka.deger_tuzagi
+
+
 def test_kalite_veri_yoksa():
     from analysis.kalite import kalite_skoru
     from data.tv_scanner import TVKalite
     bos = TVKalite("Z.IS", "Z", None, "—", None, None, None, None, None, None,
                    None, None, None, None, None, None, None)
     assert kalite_skoru(bos).etiket == "veri yok"
+
+
+def test_rsi_wilder_kesintisiz_yukselis_100():
+    """Kesintisiz yükselişte RSI=100 (uydurma değil, matematiksel doğru)."""
+    from analysis.indicators import _rsi
+    seri = pd.Series(np.arange(100, 160, dtype=float))
+    rsi = _rsi(seri, 14).dropna()
+    assert abs(rsi.iloc[-1] - 100.0) < 1e-6
+    assert (rsi >= 0).all() and (rsi <= 100).all()
+
+
+def test_kirp_uzun_mesaj_isaretlenir():
+    """4000+ karakter mesaj sessizce değil, açık işaretle kırpılmalı."""
+    from automation.notify import _kirp
+    uzun = "x" * 5000
+    k = _kirp(uzun)
+    assert len(k) <= 4000
+    assert "kısaltıldı" in k
+    # Kısa mesaj dokunulmadan geçer
+    assert _kirp("kısa") == "kısa"
 
 
 def test_sinyal_al_kosulu_seri():
@@ -256,6 +307,49 @@ def test_alarm_bos_portfoy(gecici_db):
     from analysis.alarm import portfoy_alarmlari
     import config
     assert portfoy_alarmlari(gecici_db, config.RISK) == []   # pozisyon yok → alarm yok
+
+
+def test_alarm_sat_kararinda_yanlis_stop_hedef_tetiklenmez(gecici_db, monkeypatch):
+    """SAT kararında zarar_kes=direnç, kar_al=destek olduğundan stop/hedef alarmı
+    üretilmemeli (aksi halde her düşen hisse için sahte 🛑/🎯 alarmı çıkar)."""
+    import analysis.alarm as alarm_mod
+    from analysis.teknik_derin import TeknikKarar
+    from data.storage import save_islem
+
+    save_islem(gecici_db, "DUSEN.IS", "AL", "2026-01-01", 100, 10, 1000)
+
+    # veri_getir'i sahte düşen fiyatla, analiz_et'i SAT kararıyla değiştir
+    class _FR:
+        ok = True
+        class data:
+            @staticmethod
+            def __len__(): return 60
+        note = ""
+    import pandas as pd
+    fake_df = pd.DataFrame({"Close": [90.0] * 60})
+
+    def sahte_veri(db, sem, **kw):
+        class R:
+            ok = True
+            data = fake_df
+            note = ""
+        return R()
+
+    def sahte_analiz(df, sem):
+        # SAT: zarar_kes fiyatın üstünde (direnç), kar_al altında (destek)
+        return TeknikKarar(sem, 90.0, "SAT", "Orta", -6, giris=90.0,
+                           kar_al=80.0, zarar_kes=100.0, risk_odul=None)
+
+    monkeypatch.setattr(alarm_mod, "veri_getir", sahte_veri, raising=False)
+    # alarm.py fonksiyon içinde import ettiği için modül düzeyinde de yamalayalım
+    import data.access as da
+    monkeypatch.setattr(da, "veri_getir", sahte_veri)
+    import analysis.teknik_derin as td
+    monkeypatch.setattr(td, "analiz_et", sahte_analiz)
+
+    alarmlar = alarm_mod.portfoy_alarmlari(gecici_db, {"stop_loss_pct": -0.08})
+    # SAT kararı → teknik stop/hedef alarmı YOK (sadece yüzde-zarar alarmı olabilir)
+    assert all(a.tip not in ("stop", "stop_yakin", "hedef") for a in alarmlar)
 
 
 def test_alarm_metni_bos():

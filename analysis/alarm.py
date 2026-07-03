@@ -55,6 +55,11 @@ def portfoy_alarmlari(db_path: str, risk_cfg: dict) -> list[Alarm]:
         k = analiz_et(fr.data, sembol)
         if not k.ok:
             continue
+        # SAT kararında zarar_kes = fiyatın ÜSTÜNDEKİ direnç, kar_al = ALTINDAKİ
+        # destek anlamına gelir (long-stop/hedef DEĞİL). Bu seviyeleri stop/hedef
+        # gibi kıyaslamak neredeyse her zaman yanlış tetiklenir → SAT'te atla.
+        if k.karar == "SAT":
+            continue
         if k.zarar_kes and guncel <= k.zarar_kes:
             alarmlar.append(Alarm(
                 kod, "stop",

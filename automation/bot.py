@@ -60,10 +60,18 @@ def _post(token: str, method: str, veri: dict,
         return {"ok": False, "error": str(exc)}
 
 
+def _kirp(metin: str, limit: int = 4000) -> str:
+    """Mesajı Telegram sınırına kırpar; kesildiyse açıkça belirtir (sessiz kesme yok)."""
+    if len(metin) <= limit:
+        return metin
+    not_ = "\n\n…(mesaj uzunluğu nedeniyle kısaltıldı)"
+    return metin[:limit - len(not_)] + not_
+
+
 def gonder(token: str, chat_id: str, metin: str) -> bool:
     sonuc = _post(token, "sendMessage", {
         "chat_id": chat_id,
-        "text": metin[:4000],
+        "text": _kirp(metin),
         "disable_web_page_preview": "true",
     })
     return bool(sonuc.get("ok"))
@@ -949,8 +957,22 @@ def _aylik_bildirim_gonder() -> None:
     telegram_gonder(ayin_onerileri_metni(oneriler, hata))
 
 
+_son_zamanli_kontrol = 0.0   # epoch — çok sık dosya okumamak için throttle
+
+
 def _zamanli_gonderim() -> None:
-    """Her döngüde çağrılır; zamanı gelen bildirimleri (bir kez) gönderir."""
+    """
+    Her döngüde çağrılır; zamanı gelen bildirimleri (bir kez) gönderir.
+    En fazla dakikada bir gerçek kontrol yapar (gereksiz dosya I/O'yu önler).
+    Uzun süren gönderimler bot yanıt döngüsünü geçici bloklar; bu kabul edilir
+    çünkü gönderim günde yalnızca birkaç kez ve tek seferlik tetiklenir.
+    """
+    global _son_zamanli_kontrol
+    simdi = time.monotonic()
+    if simdi - _son_zamanli_kontrol < 60:
+        return
+    _son_zamanli_kontrol = simdi
+
     now = datetime.now()
     durum = _durum_oku()
     gonderilen = set(durum.get("gonderilen", []))
@@ -1015,7 +1037,9 @@ def calistir() -> None:
                     if mesaj:
                         _isle(token, chat_id, mesaj)
 
-            # Her döngüde zamanlı bildirimleri kontrol et (launchd'siz)
+            # Zamanlı bildirimleri kontrol et (launchd'siz). getUpdates ağ hatası
+            # verse bile çalışır — geçici bir polling sorunu planlı gönderimi
+            # sonsuza dek engellemesin. Kendi içinde dakikada bir throttle'lıdır.
             _zamanli_gonderim()
 
         except KeyboardInterrupt:

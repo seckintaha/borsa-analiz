@@ -50,11 +50,19 @@ def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _rsi(close: pd.Series, period: int = 14) -> pd.Series:
+    """RSI(14) — Wilder yumuşatması (TradingView/standart ile uyumlu)."""
     delta = close.diff()
-    kazanc = delta.clip(lower=0).rolling(period).mean()
-    kayip = (-delta.clip(upper=0)).rolling(period).mean()
-    rs = kazanc / kayip
-    return 100 - (100 / (1 + rs))
+    kazanc = delta.clip(lower=0)
+    kayip = -delta.clip(upper=0)
+    # Wilder ortalaması = EWM(alpha=1/period). Basit rolling ortalama DEĞİL;
+    # aksi halde TradingView'ın RSI kolonuyla tutarsız değer üretir.
+    ort_kazanc = kazanc.ewm(alpha=1 / period, min_periods=period, adjust=False).mean()
+    ort_kayip = kayip.ewm(alpha=1 / period, min_periods=period, adjust=False).mean()
+    rs = ort_kazanc / ort_kayip
+    rsi = 100 - (100 / (1 + rs))
+    # Tüm kayıplar 0 ise (kesintisiz yükseliş) RSI=100; ort_kayip=0 → rs=inf → 100.
+    # Hem kazanç hem kayıp 0 ise (yatay) sonuç NaN kalır (veri yok, uydurma yok).
+    return rsi
 
 
 def _true_range(high: pd.Series, low: pd.Series, close: pd.Series) -> pd.Series:

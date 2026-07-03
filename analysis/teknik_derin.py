@@ -259,13 +259,20 @@ def analiz_et(df: pd.DataFrame, sembol: str) -> TeknikKarar:
 
     # ── Giriş / hedef / stop (net seviyeler) ──
     giris = kar_al = zarar_kes = risk_odul = None
+    # Stop'un fiyata en az bu kadar uzak olması beklenir (aksi halde R/R şişer).
+    # ATR'nin yarısı ya da fiyatın %0.5'i — hangisi büyükse taban risk odur.
+    min_risk = max(0.5 * atr, fiyat * 0.005)
     if karar == "AL":
         giris = round(fiyat, 2)
         # Stop: en yakın destek altı, ama ATR×2.5'ten uzaksa riski sınırla.
         if destekler and (fiyat - destekler[0].fiyat) <= 2.5 * atr:
-            zarar_kes = round(destekler[0].fiyat * 0.995, 2)
+            ham_stop = destekler[0].fiyat * 0.995
         else:
-            zarar_kes = round(fiyat - 1.5 * atr, 2)
+            ham_stop = fiyat - 1.5 * atr
+        # Stop fiyata çok yakınsa (mikro risk → absürt R/R) taban riske it.
+        if giris - ham_stop < min_risk:
+            ham_stop = giris - min_risk
+        zarar_kes = round(ham_stop, 2)
         risk = giris - zarar_kes
         # Hedef: R/R >= 1.8 verecek ilk direnci seç; yoksa risk×2 üstü ATR hedefi.
         hedef = None
@@ -292,8 +299,10 @@ def analiz_et(df: pd.DataFrame, sembol: str) -> TeknikKarar:
     if giris and kar_al and zarar_kes and karar == "AL":
         risk = giris - zarar_kes
         odul = kar_al - giris
-        if risk > 0:
-            risk_odul = round(odul / risk, 2)
+        if risk > 0 and odul > 0:
+            # R/R'ı makul bir üst sınıra çek: çok yüksek R/R genelde stop'un
+            # gerçekçi olmayacak kadar yakın olmasından doğar ve yanıltıcıdır.
+            risk_odul = round(min(odul / risk, 5.0), 2)
 
     # ── Haftalık teyit ──
     haftalik_not = ""
