@@ -360,6 +360,152 @@ def test_alarm_metni_bos():
 
 # ── tv_scanner.sinyal_puan (saf) ──────────────────────────────────────────────
 
+# ── faktör motoru (çok-faktör kesitsel sıralama — saf matematik) ──────────────
+
+def test_persentil_temel_siralama():
+    from analysis.faktor import persentil_sirala
+    # Artan değerler → yüksek iyi: en büyük ~100, en küçük ~0
+    p = persentil_sirala([10, 20, 30, 40, 50], yuksek_iyi=True)
+    assert p[0] == 0.0 and p[-1] == 100.0
+    assert p[2] == 50.0                       # orta eleman
+    # yuksek_iyi=False → ters (düşük değer yüksek persentil)
+    pt = persentil_sirala([10, 20, 30, 40, 50], yuksek_iyi=False)
+    assert pt[0] == 100.0 and pt[-1] == 0.0
+
+
+def test_persentil_none_ve_esitlik():
+    from analysis.faktor import persentil_sirala
+    # None sıralamaya girmez, None kalır
+    p = persentil_sirala([5, None, 10, None, 15])
+    assert p[1] is None and p[3] is None
+    assert p[0] == 0.0 and p[4] == 100.0
+    # Tek geçerli eleman → nötr 50
+    assert persentil_sirala([None, 7, None])[1] == 50.0
+    # Eşit değerler aynı persentili alır
+    pe = persentil_sirala([10, 10, 20])
+    assert pe[0] == pe[1]
+
+
+def test_kopuk_cezasi_tavan_kirpar():
+    from analysis.faktor import kopuk_cezasi
+    assert kopuk_cezasi(45, 5) == 1.0                 # normal → ceza yok
+    assert kopuk_cezasi(85, None) < 0.2               # aşırı RSI → ağır ceza
+    assert kopuk_cezasi(None, 50) < 0.3               # aşırı aylık getiri → ceza
+    # Ceza monoton: daha uçmuş = daha düşük çarpan
+    assert kopuk_cezasi(75, None) < kopuk_cezasi(66, None)
+    assert kopuk_cezasi(None, 35) < kopuk_cezasi(None, 22)
+
+
+def test_piotroski_sentetik_puan():
+    from analysis.faktor import piotroski_fscore
+    from data.tv_scanner import TVKalite
+    # Neredeyse mükemmel bilanço → yüksek F-Score
+    saglam = TVKalite("A.IS", "A", 10, "Tech", fk=10, pddd=1.0, roe=25, roic=18,
+                      net_marj=20, fcf_marj=22, borc_ozkaynak=0.4, cari_oran=2.0,
+                      gelir_buyume=30, net_kar_buyume=25, temettu=2,
+                      piyasa_degeri=1e9, perf_1m=5)
+    skor, n, _ = piotroski_fscore(saglam)
+    assert n == 9 and skor >= 8               # neredeyse tüm testler geçer
+    # Bozuk bilanço → düşük F-Score
+    bozuk = TVKalite("B.IS", "B", 10, "Steel", fk=-3, pddd=0.5, roe=-5, roic=-2,
+                     net_marj=-8, fcf_marj=-10, borc_ozkaynak=4, cari_oran=0.5,
+                     gelir_buyume=-15, net_kar_buyume=-40, temettu=0,
+                     piyasa_degeri=1e9, perf_1m=-5)
+    skor2, n2, _ = piotroski_fscore(bozuk)
+    assert skor2 <= 1 and skor > skor2
+
+
+def test_piotroski_finans_kaldirac_atlar():
+    from analysis.faktor import piotroski_fscore
+    from data.tv_scanner import TVKalite
+    banka = TVKalite("G.IS", "G", 10, "Finance", fk=6, pddd=0.9, roe=22, roic=None,
+                     net_marj=25, fcf_marj=None, borc_ozkaynak=6, cari_oran=0.3,
+                     gelir_buyume=20, net_kar_buyume=18, temettu=5,
+                     piyasa_degeri=1e10, perf_1m=2)
+    _, n, g = piotroski_fscore(banka)
+    # Finans: kaldıraç + cari oran testleri atlanır → toplam test < 9
+    assert n <= 7
+    assert not any("kaldıraç" in x for x in g)
+
+
+def test_birlesik_skor_agirlikli_ve_none_yayar():
+    from analysis.faktor import FaktorKayit, birlesik_skor
+    yuksek = FaktorKayit("Y", "Tech", deger_p=80, kalite_p=90, momentum_p=60,
+                         buyume_p=70, trend_p=100)
+    dusuk = FaktorKayit("D", "Tech", deger_p=20, kalite_p=10, momentum_p=40,
+                        buyume_p=30, trend_p=0)
+    assert birlesik_skor(yuksek) > birlesik_skor(dusuk)
+    assert 0 <= birlesik_skor(dusuk) <= 100
+    # Eksik faktör (None) skoru sıfırlamaz; kalan faktörler yeniden ağırlıklanır
+    kismi = FaktorKayit("K", "Tech", deger_p=None, kalite_p=80, momentum_p=None,
+                        buyume_p=None, trend_p=None)
+    assert abs(birlesik_skor(kismi) - 80.0) < 1e-6
+    # Hiç faktör yoksa 0
+    assert birlesik_skor(FaktorKayit("Z", "—")) == 0.0
+
+
+def test_faktor_evreni_kaliteli_ustte_kopuk_altta():
+    """Çok-faktör evren: kaliteli+ucuz+sağlam momentum, uçmuş köpüğü geçmeli."""
+    from analysis.faktor import faktor_evreni, EvrenGirdi
+    from data.tv_scanner import TVKalite, TVSatir
+
+    def kal(sem, sek, **kw):
+        base = dict(fiyat=10, fk=10, pddd=1.0, roe=20, roic=15, net_marj=15,
+                    fcf_marj=12, borc_ozkaynak=0.5, cari_oran=2.0, gelir_buyume=20,
+                    net_kar_buyume=15, temettu=3, piyasa_degeri=1e9, perf_1m=5)
+        base.update(kw)
+        return TVKalite(sem, sem, base["fiyat"], sek, base["fk"], base["pddd"],
+                        base["roe"], base["roic"], base["net_marj"], base["fcf_marj"],
+                        base["borc_ozkaynak"], base["cari_oran"], base["gelir_buyume"],
+                        base["net_kar_buyume"], base["temettu"], base["piyasa_degeri"],
+                        base["perf_1m"])
+
+    def tek(sem, rsi, perf_ay, fiyat=110, ema50=105, ema200=100):
+        return TVSatir(sem, sem, fiyat, 1, 2e6, 1e6, rsi, 1, 0.5, 108, ema50,
+                       ema200, 120, 95, 1e9, 115, 95, 2, perf_ay)
+
+    girdiler = [
+        # Kaliteli, ucuz, sağlıklı momentum (RSI 50, +8 ay) — ideal aday
+        EvrenGirdi("IYI.IS", kal("IYI.IS", "Tech", fk=8, roe=28, roic=22),
+                   tek("IYI.IS", 50, 8)),
+        # Uçmuş köpük: aynı temeller ama RSI 85, +50 ay → momentum kırpılmalı
+        EvrenGirdi("KOPUK.IS", kal("KOPUK.IS", "Tech", fk=8, roe=28, roic=22),
+                   tek("KOPUK.IS", 85, 50)),
+        # Zayıf temel dolgu
+        EvrenGirdi("ZAYIF.IS", kal("ZAYIF.IS", "Steel", fk=25, roe=3, roic=1,
+                   net_marj=-2, fcf_marj=-3, borc_ozkaynak=4, net_kar_buyume=-30),
+                   tek("ZAYIF.IS", 45, -5, fiyat=90, ema50=95, ema200=100)),
+    ]
+    kayitlar = faktor_evreni(girdiler)
+    m = {r.sembol: r for r in kayitlar}
+    # Köpük hissesinin momentum persentili, ceza sonrası ham persentilinden düşük
+    assert m["KOPUK"].kopuk_carpan < 0.3
+    assert m["KOPUK"].momentum_p < m["KOPUK"].momentum_ham_p
+    # İyi hisse köpükten daha yüksek birleşik skor almalı (tavan kovalanmaz)
+    assert m["IYI"].birlesik > m["KOPUK"].birlesik
+    # Piotroski hesaplanmış olmalı
+    assert m["IYI"].piotroski >= 7
+
+
+def test_magic_formula_ortak_sira():
+    from analysis.faktor import faktor_evreni, EvrenGirdi
+    from data.tv_scanner import TVKalite
+
+    def kal(sem, fk, roic):
+        return TVKalite(sem, sem, 10, "Tech", fk, 1.0, 20, roic, 15, 12, 0.5,
+                        2.0, 20, 15, 3, 1e9, 5)
+
+    girdiler = [
+        EvrenGirdi("A.IS", kal("A.IS", 5, 30), None),    # ucuz + yüksek ROIC = en iyi
+        EvrenGirdi("B.IS", kal("B.IS", 20, 10), None),
+        EvrenGirdi("C.IS", kal("C.IS", 12, 18), None),
+    ]
+    kayitlar = faktor_evreni(girdiler)
+    m = {r.sembol: r for r in kayitlar}
+    assert m["A"].magic_sira == 1                # en yüksek kazanç verimi + ROIC
+    assert m["A"].magic_sira < m["B"].magic_sira
+
+
 def test_tv_sinyal_puan_boga_pozitif():
     from data.tv_scanner import TVSatir, sinyal_puan
     boga = TVSatir(
