@@ -522,3 +522,34 @@ def test_tv_sinyal_puan_boga_pozitif():
     )
     assert sinyal_puan(boga) > sinyal_puan(ayi)   # boğa > ayı
     assert sinyal_puan(boga) > 0
+
+
+# ── performans takibi (ağsız) ─────────────────────────────────────────────────
+
+def test_oneri_takip_dedup_ve_bos_rapor(gecici_db):
+    from data.storage import save_oneri_takip, load_oneri_takip
+    from analysis.performans import performans_metni
+    # Aynı dönem+sembol+kaynak iki kez → tek kayıt (UNIQUE)
+    save_oneri_takip(gecici_db, "2026-06", "2026-06-01", "THYAO.IS", 300, 360, 285, 80, "aylik")
+    save_oneri_takip(gecici_db, "2026-06", "2026-06-01", "THYAO.IS", 300, 360, 285, 80, "aylik")
+    save_oneri_takip(gecici_db, "2026-06", "2026-06-01", "GARAN.IS", 130, 155, 122, 78, "aylik")
+    assert len(load_oneri_takip(gecici_db)) == 2          # çift engellendi
+    # Olgunlaşmamış (bugün) öneri → ölçüm boş, dürüst mesaj (ağ gerektirmez)
+    from datetime import datetime
+    bugun = datetime.now().strftime("%Y-%m-%d")
+    save_oneri_takip(gecici_db, "2099-01", bugun, "AAA.IS", 10, 12, 9, 70, "aylik")
+    # min_gun çok yüksek → hiçbiri olgun değil → boş rapor mesajı
+    metin = performans_metni(gecici_db, min_gun=9999)
+    assert "Henüz ölçülecek olgun öneri yok" in metin
+
+
+def test_oneri_kaydet_liste(gecici_db):
+    from analysis.performans import oneri_kaydet
+    from data.storage import load_oneri_takip
+    class _O:
+        def __init__(s, sembol, giris):
+            s.sembol = sembol; s.giris = giris; s.hedef = giris*1.2
+            s.stop = giris*0.95; s.birlesik = 75.0
+    n = oneri_kaydet(gecici_db, [_O("THYAO", 300), _O("GARAN", 130)], kaynak="aylik")
+    assert n == 2
+    assert len(load_oneri_takip(gecici_db, kaynak="aylik")) == 2

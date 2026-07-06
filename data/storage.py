@@ -71,6 +71,22 @@ def init_db(db_path: str) -> None:
                 symbol TEXT PRIMARY KEY,
                 sira   INTEGER DEFAULT 0
             )""")
+        # Öneri performans takibi: sistem her önerdiğinde kaydeder, sonra
+        # gerçek getiriyi endeksle kıyaslayıp kendini ölçer.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS oneri_takip (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                donem        TEXT    NOT NULL,   -- "2026-07" (ay etiketi) / gün
+                tarih        TEXT    NOT NULL,   -- öneri tarihi YYYY-MM-DD
+                symbol       TEXT    NOT NULL,
+                giris_fiyat  REAL,               -- öneri anındaki fiyat
+                hedef        REAL,
+                stop         REAL,
+                faktor_skor  REAL,
+                kaynak       TEXT    DEFAULT 'aylik',  -- aylik / fikirler
+                created_at   TEXT    DEFAULT (datetime('now')),
+                UNIQUE(donem, symbol, kaynak)
+            )""")
 
 
 # ── Fiyatlar ────────────────────────────────────────────────────────────────
@@ -240,6 +256,37 @@ def save_watchlist(db_path: str, symbols: list[str]) -> None:
         conn.executemany(
             "INSERT INTO watchlist (symbol, sira) VALUES (?,?)",
             [(s.strip().upper(), i) for i, s in enumerate(symbols)])
+
+
+# ── Öneri performans takibi ──────────────────────────────────────────────────
+
+def save_oneri_takip(db_path: str, donem: str, tarih: str, symbol: str,
+                     giris_fiyat, hedef, stop, faktor_skor,
+                     kaynak: str = "aylik") -> None:
+    """
+    Bir öneriyi takip tablosuna kaydeder. Aynı dönem+sembol+kaynak varsa
+    yok sayılır (INSERT OR IGNORE) — aynı ay tekrar çalışınca çift kayıt olmaz.
+    """
+    with _connect(db_path) as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO oneri_takip "
+            "(donem,tarih,symbol,giris_fiyat,hedef,stop,faktor_skor,kaynak) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (donem, tarih, symbol.upper(), _f(giris_fiyat), _f(hedef),
+             _f(stop), _f(faktor_skor), kaynak))
+
+
+def load_oneri_takip(db_path: str, kaynak: str | None = None) -> list[dict]:
+    """Kaydedilmiş önerileri (eski→yeni) döndürür; kaynak verilirse filtreler."""
+    with _connect(db_path) as conn:
+        if kaynak:
+            rows = conn.execute(
+                "SELECT * FROM oneri_takip WHERE kaynak=? ORDER BY tarih, symbol",
+                (kaynak,)).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM oneri_takip ORDER BY tarih, symbol").fetchall()
+    return [dict(r) for r in rows]
 
 
 # ── Yardımcı ─────────────────────────────────────────────────────────────────

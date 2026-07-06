@@ -87,7 +87,8 @@ def cmd_yardim() -> str:
         "/bist      Tüm BIST taraması (607 hisse)\n"
         "/plan      Günlük işlem planı (saat saat)\n"
         "/aylik     Aylık özet (portföy + piyasa)\n"
-        "/oneriler  Ayın hisse önerileri (teknik+temel)\n"
+        "/oneriler  Ayın hisse önerileri (çok-faktörlü)\n"
+        "/performans Geçmiş önerilerim endeksi geçti mi\n"
         "/deger     Değer yatırımı taraması (ucuz+kârlı)\n"
         "/sektorler Sektör analizi (aylık performans)\n"
         "/duyarlilik Korku/açgözlülük endeksi\n"
@@ -143,6 +144,16 @@ def cmd_aylik() -> str:
         return aylik_ozet_metni(config.DB_PATH, config.MACRO)
     except Exception as exc:
         return f"❌ Aylık özet hatası: {exc}"
+
+
+def cmd_performans() -> str:
+    """Sistemin geçmiş önerilerinin gerçek performansı (endeksle kıyas)."""
+    try:
+        import config
+        from analysis.performans import performans_metni
+        return performans_metni(config.DB_PATH, min_gun=15)
+    except Exception as exc:
+        return f"❌ Performans raporu hatası: {exc}"
 
 
 def cmd_ayinonerileri() -> str:
@@ -836,8 +847,11 @@ def _isle(token: str, chat_id: str, mesaj: dict) -> None:
         gonder(token, chat_id, "⏳ Portföy alarmları kontrol ediliyor...")
         yanit = cmd_alarmlar()
     elif komut in ("/ayinonerileri", "/ayinhisseleri", "/oneriler"):
-        gonder(token, chat_id, "⏳ Ayın önerileri: 607 hisse teknik+temel analizden geçiyor (1-2 dk)...")
+        gonder(token, chat_id, "⏳ Ayın önerileri: 607 hisse çok-faktörlü analizden geçiyor (1-2 dk)...")
         yanit = cmd_ayinonerileri()
+    elif komut in ("/performans", "/performance"):
+        gonder(token, chat_id, "⏳ Geçmiş önerilerin performansı ölçülüyor...")
+        yanit = cmd_performans()
     elif komut == "/temel":
         gonder(token, chat_id, f"⏳ {arg or 'hisse'} temel analizi...")
         yanit = cmd_temel(arg)
@@ -955,6 +969,20 @@ def _aylik_bildirim_gonder() -> None:
     telegram_gonder(aylik_ozet_metni(config.DB_PATH, config.MACRO))
     ok, hata, oneriler = ayin_onerileri(config.DB_PATH, n=10)
     telegram_gonder(ayin_onerileri_metni(oneriler, hata))
+    # Performans takibi: bu ayın önerilerini kaydet (sonra kendini ölçer)
+    try:
+        from analysis.performans import oneri_kaydet
+        oneri_kaydet(config.DB_PATH, oneriler, kaynak="aylik")
+    except Exception as exc:
+        print(f"[aylik] öneri takip kaydı hatası: {exc}")
+    # Geçmiş önerilerin performansını da gönder (varsa)
+    try:
+        from analysis.performans import performans_metni, performans_raporu
+        sonuclar, _ = performans_raporu(config.DB_PATH, min_gun=15)
+        if sonuclar:
+            telegram_gonder(performans_metni(config.DB_PATH, min_gun=15))
+    except Exception as exc:
+        print(f"[aylik] performans raporu hatası: {exc}")
 
 
 _son_zamanli_kontrol = 0.0   # epoch — çok sık dosya okumamak için throttle
