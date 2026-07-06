@@ -14,11 +14,31 @@ Veri yoksa 'veri yok' döner, uydurulmaz.
 from __future__ import annotations
 import urllib.request
 import urllib.error
-import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 import html
+import pandas as pd
+
+# XML güvenli ayrıştırma: defusedxml varsa entity-bomb / harici varlık (XXE)
+# saldırılarına karşı korur; yoksa stdlib'e düşer. Stdlib'de de harici DTD/
+# entity işlenmesini engelleyen sertleştirilmiş bir ayrıştırıcı kullanılır.
+try:
+    from defusedxml.ElementTree import fromstring as _xml_fromstring
+except ImportError:
+    import re as _re_xml
+    import xml.etree.ElementTree as _ET
+
+    # DTD / harici varlık bildirimi içeren XML reddedilir. Billion-laughs ve
+    # XXE saldırılarının HEPSİ bir DOCTYPE/ENTITY bildirimine ihtiyaç duyar;
+    # meşru RSS/Atom akışları DTD kullanmaz. Ek paket olmadan güvenli kılar.
+    _DTD_DESEN = _re_xml.compile(rb"<!DOCTYPE|<!ENTITY", _re_xml.IGNORECASE)
+
+    def _xml_fromstring(metin):
+        ham = metin if isinstance(metin, (bytes, bytearray)) else metin.encode("utf-8", "replace")
+        if _DTD_DESEN.search(ham):
+            raise _ET.ParseError("DTD/entity bildirimi reddedildi (XXE/entity-bomb koruması)")
+        return _ET.fromstring(metin)
 
 
 @dataclass
@@ -42,19 +62,36 @@ class HaberSonucu:
 # ── RSS çekici ────────────────────────────────────────────────────────────────
 
 _RSS_TIMEOUT = 8
+_MAX_RSS_BAYT = 3_000_000              # 3 MB üstü indirilmez (bellek DoS koruması)
+_IZINLI_SEMALAR = ("http", "https")   # file://, ftp:// engellenir (SSRF/yerel dosya)
+
+
+def _http_url_mu(url: str) -> bool:
+    """Yalnızca http/https adreslerine izin verir (yerel dosya/SSRF koruması)."""
+    try:
+        from urllib.parse import urlparse
+        return urlparse(url).scheme.lower() in _IZINLI_SEMALAR
+    except Exception:
+        return False
 
 
 def _rss_cek(url: str, limit: int = 10, kaynak: str = "") -> list[HaberKaydi]:
-    """Tek bir RSS akışından haber başlıklarını çeker."""
+    """Tek bir RSS akışından haber başlıklarını çeker (güvenli, boyut sınırlı)."""
     kayitlar: list[HaberKaydi] = []
+    if not _http_url_mu(url):
+        return []
     try:
         istek = urllib.request.Request(url, headers={
             "User-Agent": "Mozilla/5.0",
             "Accept": "application/rss+xml, application/xml, text/xml",
         })
         with urllib.request.urlopen(istek, timeout=_RSS_TIMEOUT) as r:
-            raw = r.read()
-        kok = ET.fromstring(raw)
+            # Boyut sınırı: aşırı büyük/kötücül akışa karşı bellek koruması
+            raw = r.read(_MAX_RSS_BAYT + 1)
+        if len(raw) > _MAX_RSS_BAYT:
+            return []
+        # Harici DTD/entity işlenmez → billion-laughs / XXE koruması
+        kok = _xml_fromstring(raw)
     except Exception:
         return []
 

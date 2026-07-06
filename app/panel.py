@@ -91,10 +91,14 @@ def _liste_ozet(wl_key: str) -> list[dict]:
             rows.append({"Sembol": s, "Fiyat": "—", "Günlük %": "—",
                          "RSI": "—", "Trend": "—", "Durum": "⚠️ Veri yok"})
             continue
+        if r.data is None or len(r.data) < 2:
+            rows.append({"Sembol": s, "Fiyat": "—", "Günlük %": "—",
+                         "RSI": "—", "Trend": "—", "Durum": "⚠️ Yetersiz veri"})
+            continue
         df = add_indicators(r.data)
         son    = float(df["Close"].iloc[-1])
         onceki = float(df["Close"].iloc[-2])
-        degisim = (son - onceki) / onceki * 100
+        degisim = (son - onceki) / onceki * 100 if onceki else 0.0
         rsi   = df["RSI"].iloc[-1]
         sma20 = df["SMA20"].iloc[-1]
         sma50 = df["SMA50"].iloc[-1]
@@ -421,10 +425,13 @@ with tab_panel:
 - Sembolün doğru yazıldığından emin olun (büyük harf)
 - [finance.yahoo.com](https://finance.yahoo.com) üzerinden sembolü doğrulayın
         """)
+    elif len(df) < 2:
+        st.warning(f"**'{sym}'** için yeterli veri yok (yalnızca {len(df)} satır). "
+                   "Daha uzun bir dönem seçmeyi deneyin.")
     else:
         son     = float(df["Close"].iloc[-1])
         onceki  = float(df["Close"].iloc[-2])
-        degisim = (son - onceki) / onceki * 100
+        degisim = (son - onceki) / onceki * 100 if onceki else 0.0
         rsi_son = df["RSI"].iloc[-1]
 
         st.markdown(f"## {sym}")

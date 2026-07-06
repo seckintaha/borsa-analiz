@@ -21,11 +21,24 @@ from urllib.parse import urlparse
 import urllib.request
 
 # XML'i güvenli ayrıştır: defusedxml varsa entity-bomb / harici varlık (XXE)
-# saldırılarına karşı korur; yoksa stdlib'e düşer (indirme boyutu yine sınırlı).
+# saldırılarına karşı korur; yoksa stdlib'e düşer. Stdlib fallback'inde de
+# harici DTD/entity işlenmez (billion-laughs / XXE koruması) — ek paket gerekmez.
 try:
     from defusedxml.ElementTree import fromstring as _xml_fromstring
 except ImportError:
-    from xml.etree.ElementTree import fromstring as _xml_fromstring
+    import re as _re_xml
+    import xml.etree.ElementTree as _ET
+
+    # DTD / harici varlık bildirimi içeren XML reddedilir. Billion-laughs ve
+    # XXE saldırılarının HEPSİ bir DOCTYPE/ENTITY bildirimine ihtiyaç duyar;
+    # meşru RSS/Atom akışları DTD kullanmaz. Bu, ek paket olmadan güvenli kılar.
+    _DTD_DESEN = _re_xml.compile(rb"<!DOCTYPE|<!ENTITY", _re_xml.IGNORECASE)
+
+    def _xml_fromstring(metin):
+        ham = metin if isinstance(metin, (bytes, bytearray)) else metin.encode("utf-8", "replace")
+        if _DTD_DESEN.search(ham):
+            raise _ET.ParseError("DTD/entity bildirimi reddedildi (XXE/entity-bomb koruması)")
+        return _ET.fromstring(metin)
 
 # Güvenlik sınırları
 _IZINLI_SEMALAR = ("http", "https")   # file://, ftp:// vb. engellenir (SSRF/yerel dosya)

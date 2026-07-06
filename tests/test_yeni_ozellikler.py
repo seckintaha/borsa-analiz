@@ -553,3 +553,67 @@ def test_oneri_kaydet_liste(gecici_db):
     n = oneri_kaydet(gecici_db, [_O("THYAO", 300), _O("GARAN", 130)], kaynak="aylik")
     assert n == 2
     assert len(load_oneri_takip(gecici_db, kaynak="aylik")) == 2
+
+
+# ── XXE / RSS güvenlik sertleştirmesi (ağsız) ─────────────────────────────────
+
+_NORMAL_RSS = ('<rss><channel><item><title>Test Haber</title>'
+               '<link>http://ornek.com/a</link>'
+               '<description>ozet</description></item></channel></rss>')
+
+_BILLION_LAUGHS = (
+    '<?xml version="1.0"?>\n'
+    '<!DOCTYPE lolz [ <!ENTITY lol "lol">'
+    ' <!ENTITY lol2 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">'
+    ' <!ENTITY lol3 "&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;"> ]>'
+    '<rss><channel><item><title>&lol3;</title></item></channel></rss>')
+
+_XXE = ('<?xml version="1.0"?>'
+        '<!DOCTYPE r [<!ENTITY x SYSTEM "file:///etc/passwd">]>'
+        '<rss><channel><item><title>&x;</title></item></channel></rss>')
+
+
+@pytest.mark.parametrize("modul_ad", ["analysis.news", "analysis.kap"])
+def test_xml_normal_rss_ayristirilir(modul_ad):
+    import importlib
+    mod = importlib.import_module(modul_ad)
+    kok = mod._xml_fromstring(_NORMAL_RSS)
+    assert kok.find(".//title").text == "Test Haber"
+
+
+@pytest.mark.parametrize("modul_ad", ["analysis.news", "analysis.kap"])
+@pytest.mark.parametrize("payload_ad", ["billion", "xxe"])
+def test_xml_dtd_saldirilari_reddedilir(modul_ad, payload_ad):
+    """Billion-laughs ve harici entity (XXE) DTD içerdiği için reddedilmeli."""
+    import importlib
+    mod = importlib.import_module(modul_ad)
+    payload = _BILLION_LAUGHS if payload_ad == "billion" else _XXE
+    with pytest.raises(Exception):
+        mod._xml_fromstring(payload)
+
+
+def test_kap_rss_yerel_dosya_semasi_reddedilir():
+    """file:// gibi http olmayan şemalar için ağa çıkmadan boş dönmeli (SSRF)."""
+    from analysis import kap
+    assert kap._rss_cek("file:///etc/passwd") == []
+    assert kap._http_url_mu("http://x.com") is True
+    assert kap._http_url_mu("file:///etc/passwd") is False
+
+
+# ── Panel yardımcıları: tek satırlık veri sekmeyi kırmamalı ───────────────────
+
+def test_liste_ozet_tek_satir_veri_cokmez(monkeypatch):
+    """_liste_ozet, tek satırlık (iloc[-2] olmayan) veri gelse de çökmemeli."""
+    from data.fetcher import FetchResult
+    import analysis.screener  # noqa
+    tek = pd.DataFrame({"Open": [10.0], "High": [10.0], "Low": [10.0],
+                        "Close": [10.0], "Volume": [1000.0]},
+                       index=pd.date_range(end=datetime.now().date(), periods=1, freq="B"))
+    fr = FetchResult("AAA", tek, "test", "", ok=True)
+
+    import app.panel as panel
+    monkeypatch.setattr(panel, "fetch_many", lambda syms, period="3mo": {"AAA": fr})
+    # cache'li fonksiyonun sarmalanmamış halini çağır
+    rows = panel._liste_ozet.__wrapped__("AAA")
+    assert rows and rows[0]["Sembol"] == "AAA"
+    assert rows[0]["Durum"] == "⚠️ Yetersiz veri"
