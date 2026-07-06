@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Borsa Analiz — Akıllı BIST Asistanı</title>
+<meta name="description" content="BIST'teki 607 hisseyi çok-faktörlü quant motoruyla analiz eden akıllı Telegram asistanı. Piotroski F-Score, Magic Formula, kalite skoru, portföy yönetimi ve performans takibi.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#070b14; --bg2:#0b1120; --card:#0f1830; --card2:#131f3a;
+  --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.14);
+  --text:#e9eef8; --muted:#93a1ba; --muted2:#6b7893;
+  --accent:#10b981; --accent2:#22d3ee; --gold:#f5c451; --red:#f87171;
+  --grad:linear-gradient(135deg,#10b981 0%,#22d3ee 100%);
+  --grad-soft:linear-gradient(135deg,rgba(16,185,129,.15),rgba(34,211,238,.15));
+  --shadow:0 20px 60px -20px rgba(0,0,0,.7);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  background:var(--bg);color:var(--text);line-height:1.6;overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:'JetBrains Mono',monospace}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+.grad-text{background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+
+/* ── NAV ── */
+nav{position:sticky;top:0;z-index:100;backdrop-filter:blur(14px);
+  background:rgba(7,11,20,.72);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;align-items:center;justify-content:space-between;height:68px}
+.logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:19px;letter-spacing:-.02em}
+.logo .mark{width:30px;height:30px;border-radius:8px;background:var(--grad);
+  display:grid;place-items:center;font-size:16px;box-shadow:0 4px 14px rgba(16,185,129,.4)}
+.nav-links{display:flex;gap:34px;align-items:center}
+.nav-links a{color:var(--muted);font-size:14.5px;font-weight:500;transition:color .2s}
+.nav-links a:hover{color:var(--text)}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:11px 20px;border-radius:11px;
+  font-weight:600;font-size:14.5px;transition:transform .18s,box-shadow .18s,background .2s;cursor:pointer;border:none}
+.btn-primary{background:var(--grad);color:#04120c;box-shadow:0 8px 22px -6px rgba(16,185,129,.5)}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 12px 30px -6px rgba(16,185,129,.65)}
+.btn-ghost{background:rgba(255,255,255,.05);color:var(--text);border:1px solid var(--line2)}
+.btn-ghost:hover{background:rgba(255,255,255,.1)}
+.nav-toggle{display:none;background:none;border:none;color:var(--text);font-size:24px;cursor:pointer}
+
+/* ── HERO ── */
+.hero{position:relative;padding:88px 0 70px;overflow:hidden}
+.hero::before,.hero::after{content:"";position:absolute;border-radius:50%;filter:blur(120px);opacity:.5;z-index:0}
+.hero::before{width:520px;height:520px;background:rgba(16,185,129,.28);top:-160px;left:-120px}
+.hero::after{width:480px;height:480px;background:rgba(34,211,238,.22);top:-60px;right:-140px}
+.grid-bg{position:absolute;inset:0;z-index:0;opacity:.4;
+  background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+  background-size:52px 52px;mask-image:radial-gradient(ellipse 80% 60% at 50% 0%,#000 40%,transparent 75%)}
+.hero .wrap{position:relative;z-index:2;display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center}
+.badge{display:inline-flex;align-items:center;gap:8px;padding:7px 15px;border-radius:100px;
+  background:var(--grad-soft);border:1px solid rgba(16,185,129,.3);font-size:13px;font-weight:600;color:#7ff0cf;margin-bottom:26px}
+.badge .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+h1{font-size:57px;line-height:1.04;font-weight:900;letter-spacing:-.035em;margin-bottom:22px}
+.hero p.lead{font-size:19px;color:var(--muted);max-width:520px;margin-bottom:34px}
+.hero-cta{display:flex;gap:14px;flex-wrap:wrap}
+.hero-note{margin-top:22px;font-size:13.5px;color:var(--muted2);display:flex;align-items:center;gap:8px}
+
+/* Phone mockup */
+.phone{position:relative;justify-self:center;width:310px;height:610px;border-radius:40px;
+  background:linear-gradient(160deg,#1a2540,#0c1426);border:1px solid var(--line2);
+  box-shadow:var(--shadow),0 0 0 8px #05080f;padding:14px;animation:float 6s ease-in-out infinite}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-14px)}}
+.phone-notch{position:absolute;top:14px;left:50%;transform:translateX(-50%);width:120px;height:24px;background:#05080f;border-radius:0 0 16px 16px;z-index:3}
+.phone-screen{height:100%;border-radius:28px;background:#0a0f1c;overflow:hidden;display:flex;flex-direction:column}
+.tg-head{background:#17212b;padding:16px 16px 12px;display:flex;align-items:center;gap:11px;border-bottom:1px solid rgba(255,255,255,.06)}
+.tg-ava{width:38px;height:38px;border-radius:50%;background:var(--grad);display:grid;place-items:center;font-size:18px}
+.tg-name{font-weight:600;font-size:14.5px}
+.tg-status{font-size:11.5px;color:var(--accent)}
+.tg-body{flex:1;padding:14px 12px;display:flex;flex-direction:column;gap:9px;overflow:hidden;background:
+  radial-gradient(circle at 30% 10%,rgba(16,185,129,.06),transparent 40%),#0a0f1c}
+.bubble{max-width:82%;padding:9px 12px;border-radius:14px;font-size:12.3px;line-height:1.45}
+.bubble.out{align-self:flex-end;background:#2b5278;border-bottom-right-radius:5px}
+.bubble.in{align-self:flex-start;background:#17212b;border-bottom-left-radius:5px}
+.bubble .mono{font-size:11px;color:#a8d8c8;display:block}
+.bubble b{color:#8affda}
+.bubble .g{color:#5fd39b}.bubble .r{color:#f79b9b}.bubble .y{color:#f5c451}
+
+/* ── STATS ── */
+.stats{border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--bg2)}
+.stats .wrap{display:grid;grid-template-columns:repeat(4,1fr);gap:24px;padding:38px 24px}
+.stat{text-align:center}
+.stat .n{font-size:38px;font-weight:900;letter-spacing:-.03em}
+.stat .l{font-size:13.5px;color:var(--muted);margin-top:4px;font-weight:500}
+
+/* ── SECTIONS ── */
+section.pad{padding:96px 0}
+.eyebrow{text-align:center;font-size:13px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--accent2);margin-bottom:14px}
+.sec-title{text-align:center;font-size:42px;font-weight:900;letter-spacing:-.03em;margin-bottom:16px}
+.sec-sub{text-align:center;font-size:17.5px;color:var(--muted);max-width:620px;margin:0 auto 56px}
+
+/* Features */
+.features{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.fcard{background:linear-gradient(180deg,var(--card),var(--bg2));border:1px solid var(--line);
+  border-radius:18px;padding:28px;transition:transform .25s,border-color .25s,box-shadow .25s}
+.fcard:hover{transform:translateY(-6px);border-color:rgba(16,185,129,.35);box-shadow:var(--shadow)}
+.fico{width:50px;height:50px;border-radius:13px;background:var(--grad-soft);border:1px solid rgba(16,185,129,.25);
+  display:grid;place-items:center;font-size:24px;margin-bottom:18px}
+.fcard h3{font-size:19px;font-weight:700;margin-bottom:9px;letter-spacing:-.01em}
+.fcard p{font-size:14.5px;color:var(--muted)}
+.fcard .tag{display:inline-block;margin-top:14px;font-size:11.5px;font-weight:600;color:var(--accent2);
+  background:rgba(34,211,238,.1);padding:3px 10px;border-radius:6px}
+
+/* Steps */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;counter-reset:s}
+.step{position:relative;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:30px 26px}
+.step::before{counter-increment:s;content:"0" counter(s);font-family:'JetBrains Mono',monospace;
+  font-size:44px;font-weight:700;background:var(--grad);-webkit-background-clip:text;background-clip:text;
+  -webkit-text-fill-color:transparent;opacity:.9;display:block;margin-bottom:12px;letter-spacing:-.04em}
+.step h3{font-size:19px;margin-bottom:8px}
+.step p{font-size:14.5px;color:var(--muted)}
+.step .cmd{margin-top:14px;font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--accent);
+  background:#04120c;border:1px solid rgba(16,185,129,.2);padding:9px 12px;border-radius:9px}
+
+/* Method / quant */
+.method{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:center}
+.method-list{display:flex;flex-direction:column;gap:18px}
+.mitem{display:flex;gap:16px}
+.mitem .mi{flex-shrink:0;width:44px;height:44px;border-radius:11px;background:var(--grad-soft);
+  border:1px solid rgba(16,185,129,.25);display:grid;place-items:center;font-size:20px}
+.mitem h4{font-size:16.5px;margin-bottom:3px}
+.mitem p{font-size:14px;color:var(--muted)}
+.method-card{background:linear-gradient(180deg,var(--card2),var(--bg2));border:1px solid var(--line);
+  border-radius:20px;padding:30px;box-shadow:var(--shadow)}
+.mrow{display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-bottom:1px solid var(--line)}
+.mrow:last-child{border-bottom:none}
+.mrow .lbl{font-size:14.5px;font-weight:500}
+.mbar{width:130px;height:8px;border-radius:100px;background:rgba(255,255,255,.08);overflow:hidden}
+.mbar i{display:block;height:100%;background:var(--grad);border-radius:100px}
+.mrow .pct{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--accent);width:38px;text-align:right}
+
+/* Trust */
+.trust{display:grid;grid-template-columns:repeat(4,1fr);gap:20px}
+.tcard{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:26px;text-align:center}
+.tcard .ti{font-size:30px;margin-bottom:12px}
+.tcard h4{font-size:16px;margin-bottom:7px}
+.tcard p{font-size:13.5px;color:var(--muted)}
+
+/* Commands */
+.cmdbox{background:linear-gradient(180deg,#0a1120,#070b14);border:1px solid var(--line2);border-radius:18px;
+  overflow:hidden;box-shadow:var(--shadow);max-width:820px;margin:0 auto}
+.cmdbar{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid var(--line);background:#0d1424}
+.cmdbar .c{width:12px;height:12px;border-radius:50%}
+.cmdbar .c1{background:#ff5f57}.cmdbar .c2{background:#febc2e}.cmdbar .c3{background:#28c840}
+.cmdbar span{margin-left:10px;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--muted2)}
+.cmdlist{padding:22px 24px;display:grid;grid-template-columns:1fr 1fr;gap:9px 34px;font-family:'JetBrains Mono',monospace;font-size:13.5px}
+.cmdlist div{display:flex;gap:12px;align-items:baseline}
+.cmdlist .k{color:var(--accent);font-weight:500;min-width:112px}
+.cmdlist .d{color:var(--muted)}
+
+/* CTA */
+.cta{position:relative;text-align:center;padding:80px 0;overflow:hidden}
+.cta-inner{position:relative;z-index:2;background:linear-gradient(135deg,rgba(16,185,129,.12),rgba(34,211,238,.12));
+  border:1px solid rgba(16,185,129,.3);border-radius:28px;padding:64px 40px;max-width:840px;margin:0 auto}
+.cta h2{font-size:42px;font-weight:900;letter-spacing:-.03em;margin-bottom:16px}
+.cta p{font-size:18px;color:var(--muted);margin-bottom:32px;max-width:520px;margin-left:auto;margin-right:auto}
+
+/* Footer */
+footer{border-top:1px solid var(--line);padding:52px 0 40px;background:var(--bg2)}
+footer .wrap{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:40px}
+footer .fcol h5{font-size:13px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted2);margin-bottom:16px}
+footer .fcol a{display:block;color:var(--muted);font-size:14.5px;margin-bottom:10px;transition:color .2s}
+footer .fcol a:hover{color:var(--text)}
+.fabout p{font-size:14px;color:var(--muted);margin-top:14px;max-width:320px}
+.disclaimer{margin-top:40px;padding-top:26px;border-top:1px solid var(--line);text-align:center;
+  font-size:13px;color:var(--muted2);max-width:820px;margin-left:auto;margin-right:auto;line-height:1.7}
+
+/* reveal */
+.reveal{opacity:0;transform:translateY(26px);transition:opacity .7s cubic-bezier(.2,.7,.2,1),transform .7s cubic-bezier(.2,.7,.2,1)}
+.reveal.show{opacity:1;transform:none}
+
+/* Responsive */
+@media(max-width:900px){
+  .nav-links{display:none}.nav-toggle{display:block}
+  .hero .wrap{grid-template-columns:1fr;text-align:center}
+  h1{font-size:42px}.hero p.lead{margin-left:auto;margin-right:auto}
+  .hero-cta{justify-content:center}.phone{margin-top:20px}
+  .stats .wrap{grid-template-columns:repeat(2,1fr);gap:30px}
+  .features,.steps,.trust{grid-template-columns:1fr}
+  .method{grid-template-columns:1fr;gap:32px}
+  .cmdlist{grid-template-columns:1fr}
+  footer .wrap{grid-template-columns:1fr}
+  .sec-title,.cta h2{font-size:32px}
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <div class="logo"><span class="mark">◈</span> Borsa<span class="grad-text">Analiz</span></div>
+    <div class="nav-links">
+      <a href="#ozellikler">Özellikler</a>
+      <a href="#motor">Quant Motoru</a>
+      <a href="#nasil">Nasıl Çalışır</a>
+      <a href="#guven">Güven</a>
+      <a href="https://github.com/seckintaha/borsa-analiz" class="btn btn-ghost" style="padding:9px 16px">GitHub</a>
+    </div>
+    <button class="nav-toggle" onclick="document.querySelector('.nav-links').style.display=(document.querySelector('.nav-links').style.display==='flex'?'none':'flex')">☰</button>
+  </div>
+</nav>
+
+<!-- HERO -->
+<header class="hero">
+  <div class="grid-bg"></div>
+  <div class="wrap">
+    <div class="reveal">
+      <div class="badge"><span class="dot"></span> BIST'in 607 hissesi · her gün taranır</div>
+      <h1>Borsayı bir <span class="grad-text">quant fon</span> gibi analiz eden Telegram asistanı</h1>
+      <p class="lead">Çok-faktörlü bir motor 607 BIST hissesini Piotroski F-Score, Magic Formula ve kalite skoruyla sıralar. Tavan yapmış hisseyi değil, <b style="color:var(--text)">kaliteli ve makul giriş noktasındakileri</b> bulur — hepsi gerçek veriyle.</p>
+      <div class="hero-cta">
+        <a href="#nasil" class="btn btn-primary">🚀 Telegram'da Başla</a>
+        <a href="https://github.com/seckintaha/borsa-analiz" class="btn btn-ghost">⭐ Kaynağı İncele</a>
+      </div>
+      <div class="hero-note">🔒 Veri uydurmaz — yoksa "veri yok" der · ⚠️ Yatırım tavsiyesi değildir</div>
+    </div>
+
+    <!-- Phone mockup -->
+    <div class="phone reveal">
+      <div class="phone-notch"></div>
+      <div class="phone-screen">
+        <div class="tg-head">
+          <div class="tg-ava">◈</div>
+          <div><div class="tg-name">Borsa Analiz Bot</div><div class="tg-status">● çevrimiçi</div></div>
+        </div>
+        <div class="tg-body">
+          <div class="bubble out">/oneriler</div>
+          <div class="bubble in">🏅 <b>AYIN HİSSE ÖNERİLERİ</b>
+            <span class="mono">Çok-faktör · köpük/tavan elenir</span></div>
+          <div class="bubble in"><b>1) GEDIK</b> · faktör 84/100
+            <span class="mono g">Değer 69 · Kalite 97 · Mom 82</span>
+            <span class="mono">🧮 Piotroski 6/7 · MagicF #25</span>
+            <span class="mono y">RSI 56 (aşırı alım değil) · uçmamış</span>
+            <span class="mono">🎯 Giriş 7.38 · Hedef 9.14 · Stop 6.5</span></div>
+          <div class="bubble out">/performans</div>
+          <div class="bubble in">📊 <b>ÖNERİ PERFORMANSI</b>
+            <span class="mono g">🟢 THYAO: %+11.3 (endeks %+4.9)</span>
+            <span class="mono r">🔴 GARAN: %+2.7 (endeksin altı)</span>
+            <span class="mono">🏆 Endeksi geçen: %50</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- STATS -->
+<div class="stats">
+  <div class="wrap">
+    <div class="stat reveal"><div class="n grad-text">607</div><div class="l">taranan BIST hissesi</div></div>
+    <div class="stat reveal"><div class="n grad-text">30+</div><div class="l">Telegram komutu</div></div>
+    <div class="stat reveal"><div class="n grad-text">5</div><div class="l">faktör + Piotroski + Magic</div></div>
+    <div class="stat reveal"><div class="n grad-text">105</div><div class="l">otomatik test</div></div>
+  </div>
+</div>
+
+<!-- FEATURES -->
+<section class="pad" id="ozellikler">
+  <div class="wrap">
+    <div class="eyebrow reveal">Neler Yapıyor</div>
+    <h2 class="sec-title reveal">Profesyonel analiz, tek uygulamada</h2>
+    <p class="sec-sub reveal">Bir kurumsal fonun kullandığı yöntemleri, cebindeki Telegram'a taşır.</p>
+    <div class="features">
+      <div class="fcard reveal"><div class="fico">🧠</div><h3>Çok-Faktörlü Quant Motoru</h3><p>607 hisse kesitsel olarak sıralanır: Kalite, Değer, Momentum, Büyüme ve Trend faktörleri persentil bazında birleşir.</p><span class="tag">Fama-French / AQR tarzı</span></div>
+      <div class="fcard reveal"><div class="fico">🧮</div><h3>Piotroski + Magic Formula</h3><p>Kanıtlanmış akademik skorlar: 9 puanlık bilanço sağlamlığı ve Greenblatt'ın kazanç verimi + ROIC sıralaması.</p><span class="tag">Kanıtlanmış yöntem</span></div>
+      <div class="fcard reveal"><div class="fico">🪤</div><h3>Değer Tuzağı Filtresi</h3><p>"Ucuz" yetmez. Kalite skoru borç, marj, nakit ve büyümeyi ölçüp ucuz-ama-bozulan hisseleri eler.</p><span class="tag">Kalite Skoru 0-100</span></div>
+      <div class="fcard reveal"><div class="fico">📉</div><h3>Tavan Kovalamaz</h3><p>RSI&gt;65 ve aşırı yükselmiş hisselerde köpük cezası. Zaten uçmuşu değil, makul giriş noktasındakini seçer.</p><span class="tag">Anti-momentum köpük</span></div>
+      <div class="fcard reveal"><div class="fico">💼</div><h3>Portföy Yönetimi</h3><p>Telegram'dan ekle/sat, canlı kâr-zarar, korelasyon ve yoğunlaşma analizi, çeşitlendirme önerileri.</p><span class="tag">/portfoyum · /portfoy</span></div>
+      <div class="fcard reveal"><div class="fico">🚨</div><h3>Akıllı Alarmlar</h3><p>Pozisyonun teknik stop, hedef ya da zarar eşiğine geldiğinde otomatik uyarı — her taramada kontrol.</p><span class="tag">/alarmlar</span></div>
+      <div class="fcard reveal"><div class="fico">📊</div><h3>Performans Takibi</h3><p>Sistem her önerisini kaydeder ve sonra gerçek getiriyi endeksle kıyaslar. Kendini dürüstçe ölçer.</p><span class="tag">/performans</span></div>
+      <div class="fcard reveal"><div class="fico">🎯</div><h3>Sinyal Edge Testi</h3><p>Bir hissede AL sinyali geçmişte gerçekten işe yaramış mı? İstatistiksel olarak ölçer, süslemez.</p><span class="tag">/sinyaltest</span></div>
+      <div class="fcard reveal"><div class="fico">🗓️</div><h3>Otomatik Bildirimler</h3><p>Hafta içi açılış ve kapanışta tarama + yorum, ayın 1'inde tam öneri raporu — istemeden gelir.</p><span class="tag">Günlük + Aylık</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- METHOD -->
+<section class="pad" id="motor" style="background:var(--bg2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+  <div class="wrap">
+    <div class="eyebrow reveal">Motorun İçi</div>
+    <h2 class="sec-title reveal">Nasıl "profesyonel" karar veriyor?</h2>
+    <p class="sec-sub reveal">Her hisse, tüm BIST evrenine göre persentil olarak sıralanır — tek göstergeye değil, faktör harmanına bakılır.</p>
+    <div class="method">
+      <div class="method-list">
+        <div class="mitem reveal"><div class="mi">💎</div><div><h4>Değer</h4><p>Kazanç verimi (1/F-K), düşük PD/DD, temettü verimi.</p></div></div>
+        <div class="mitem reveal"><div class="mi">🏆</div><div><h4>Kalite</h4><p>ROE, ROIC, net & nakit marjı, borç sağlığı (finans sektörü muaf).</p></div></div>
+        <div class="mitem reveal"><div class="mi">📈</div><div><h4>Momentum</h4><p>Orta vade getiri — ama köpük cezasıyla; tavan yapan cezalandırılır.</p></div></div>
+        <div class="mitem reveal"><div class="mi">🌱</div><div><h4>Büyüme</h4><p>Gelir ve net kâr büyümesi, yıllık bazda.</p></div></div>
+        <div class="mitem reveal"><div class="mi">📐</div><div><h4>Trend Sağlığı</h4><p>Fiyat &gt; 200-günlük ortalama; düşen bıçak elenir.</p></div></div>
+      </div>
+      <div class="method-card reveal">
+        <div style="font-size:13px;color:var(--muted2);text-transform:uppercase;letter-spacing:.1em;margin-bottom:16px">Faktör Ağırlıkları</div>
+        <div class="mrow"><span class="lbl">🏆 Kalite</span><div style="display:flex;align-items:center;gap:12px"><div class="mbar"><i style="width:30%"></i></div><span class="pct">30%</span></div></div>
+        <div class="mrow"><span class="lbl">💎 Değer</span><div style="display:flex;align-items:center;gap:12px"><div class="mbar"><i style="width:25%"></i></div><span class="pct">25%</span></div></div>
+        <div class="mrow"><span class="lbl">📈 Momentum</span><div style="display:flex;align-items:center;gap:12px"><div class="mbar"><i style="width:20%"></i></div><span class="pct">20%</span></div></div>
+        <div class="mrow"><span class="lbl">🌱 Büyüme</span><div style="display:flex;align-items:center;gap:12px"><div class="mbar"><i style="width:15%"></i></div><span class="pct">15%</span></div></div>
+        <div class="mrow"><span class="lbl">📐 Trend</span><div style="display:flex;align-items:center;gap:12px"><div class="mbar"><i style="width:10%"></i></div><span class="pct">10%</span></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- STEPS -->
+<section class="pad" id="nasil">
+  <div class="wrap">
+    <div class="eyebrow reveal">3 Adımda</div>
+    <h2 class="sec-title reveal">Dakikalar içinde başla</h2>
+    <p class="sec-sub reveal">Uygulama indirmek yok. Hepsi Telegram'da, cebinde.</p>
+    <div class="steps">
+      <div class="step reveal"><h3>Botu ekle</h3><p>Telegram botunu başlat, hazır komutlara erişim anında açılır.</p><div class="cmd">/yardim</div></div>
+      <div class="step reveal"><h3>Portföyünü gir</h3><p>Hisselerini tek satırla ekle; sistem canlı fiyatla kâr-zararını takip etsin.</p><div class="cmd">/ekle THYAO 100 280</div></div>
+      <div class="step reveal"><h3>Analiz & öneri al</h3><p>Çok-faktörlü ayın önerileri, alarmlar ve performans takibi otomatik gelsin.</p><div class="cmd">/oneriler</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- TRUST -->
+<section class="pad" id="guven" style="background:var(--bg2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+  <div class="wrap">
+    <div class="eyebrow reveal">Neden Güvenilir</div>
+    <h2 class="sec-title reveal">Doğruluk ve dürüstlük ilkesi</h2>
+    <p class="sec-sub reveal">İyi görünmek için değil, doğru olmak için tasarlandı.</p>
+    <div class="trust">
+      <div class="tcard reveal"><div class="ti">🔍</div><h4>Gerçek Veri</h4><p>TradingView + yfinance. Veri yoksa "veri yok" der — asla sayı uydurmaz.</p></div>
+      <div class="tcard reveal"><div class="ti">🧪</div><h4>105 Test</h4><p>Formüller, faktörler ve hesaplar otomatik testlerle sürekli doğrulanır.</p></div>
+      <div class="tcard reveal"><div class="ti">📖</div><h4>Açık Kaynak</h4><p>Tüm kod GitHub'da. Kara kutu yok; her karar gerekçesiyle gösterilir.</p></div>
+      <div class="tcard reveal"><div class="ti">⚠️</div><h4>Abartısız</h4><p>Garanti vermez. Sinyalin işe yaramadığı yeri bile dürüstçe söyler.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- COMMANDS -->
+<section class="pad">
+  <div class="wrap">
+    <div class="eyebrow reveal">Komut Seti</div>
+    <h2 class="sec-title reveal">30+ komut, parmak ucunda</h2>
+    <p class="sec-sub reveal">Piyasadan portföye, temel analizden risk yönetimine kadar.</p>
+    <div class="cmdbox reveal">
+      <div class="cmdbar"><span class="c c1"></span><span class="c c2"></span><span class="c c3"></span><span>borsa-analiz — Telegram</span></div>
+      <div class="cmdlist">
+        <div><span class="k">/oneriler</span><span class="d">ayın çok-faktörlü önerileri</span></div>
+        <div><span class="k">/performans</span><span class="d">önerilerim endeksi geçti mi</span></div>
+        <div><span class="k">/analiz THYAO</span><span class="d">derin teknik + AL/TUT/SAT</span></div>
+        <div><span class="k">/kalite GARAN</span><span class="d">finansal kalite skoru</span></div>
+        <div><span class="k">/temel ASELS</span><span class="d">F/K, ROE, marj, temettü</span></div>
+        <div><span class="k">/sinyaltest PGSUS</span><span class="d">sinyal geçmişte işe yaradı mı</span></div>
+        <div><span class="k">/portfoyum</span><span class="d">pozisyonlar + canlı K/Z</span></div>
+        <div><span class="k">/alarmlar</span><span class="d">stop / hedef / zarar uyarısı</span></div>
+        <div><span class="k">/sektorler</span><span class="d">sektör performans analizi</span></div>
+        <div><span class="k">/duyarlilik</span><span class="d">korku / açgözlülük endeksi</span></div>
+        <div><span class="k">/deger</span><span class="d">değer yatırımı taraması</span></div>
+        <div><span class="k">/cesitlendir</span><span class="d">portföy çeşitlendirme önerisi</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta">
+  <div class="grid-bg" style="opacity:.25"></div>
+  <div class="wrap">
+    <div class="cta-inner reveal">
+      <h2>Borsayı <span class="grad-text">veriyle</span> oku</h2>
+      <p>Duygularla değil, faktörlerle. Kaliteli hisseleri makul giriş noktasında yakala — hepsi cebindeki Telegram'da.</p>
+      <div class="hero-cta" style="justify-content:center">
+        <a href="https://github.com/seckintaha/borsa-analiz" class="btn btn-primary">🚀 Hemen Kur</a>
+        <a href="https://github.com/seckintaha/borsa-analiz/blob/main/DEPLOY.md" class="btn btn-ghost">☁️ 7/24 Buluta Al</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="wrap">
+    <div class="fabout">
+      <div class="logo"><span class="mark">◈</span> Borsa<span class="grad-text">Analiz</span></div>
+      <p>BIST için çok-faktörlü quant analiz motoru ve akıllı Telegram asistanı. Açık kaynak, gerçek veri, dürüst öz-değerlendirme.</p>
+    </div>
+    <div class="fcol">
+      <h5>Ürün</h5>
+      <a href="#ozellikler">Özellikler</a>
+      <a href="#motor">Quant Motoru</a>
+      <a href="#nasil">Nasıl Çalışır</a>
+      <a href="#guven">Güven</a>
+    </div>
+    <div class="fcol">
+      <h5>Kaynak</h5>
+      <a href="https://github.com/seckintaha/borsa-analiz">GitHub Deposu</a>
+      <a href="https://github.com/seckintaha/borsa-analiz/blob/main/DEPLOY.md">Kurulum (7/24)</a>
+      <a href="https://github.com/seckintaha/borsa-analiz/blob/main/README.md">Dokümantasyon</a>
+    </div>
+  </div>
+  <div class="wrap">
+    <p class="disclaimer">⚠️ <b>Yatırım tavsiyesi değildir.</b> Bu sistem teknik ve temel verilerin matematiksel bir çıktısıdır; geçmiş performans geleceği garanti etmez ve sık sık yanılabilir. Tüm yatırım kararları ve riski kullanıcıya aittir. Kendi araştırmanı yap.</p>
+  </div>
+</footer>
+
+<script>
+// Scroll reveal
+const io=new IntersectionObserver((es)=>{es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('show');io.unobserve(e.target)}})},{threshold:.12});
+document.querySelectorAll('.reveal').forEach((el,i)=>{el.style.transitionDelay=(i%9*40)+'ms';io.observe(el)});
+// Footer year (if needed later) & nav shrink
+window.addEventListener('scroll',()=>{const n=document.querySelector('nav');n.style.boxShadow=window.scrollY>10?'0 8px 30px -10px rgba(0,0,0,.6)':'none'});
+</script>
+</body>
+</html>
