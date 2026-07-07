@@ -14,6 +14,16 @@ from __future__ import annotations
 from data.tv_scanner import tv_temel_tara, TVTemel
 
 
+# TR yüksek enflasyon ortamında nominal çarpanlar çarpıktır (enflasyon
+# muhasebesi / varlık yeniden değerleme). CPI SAYISI UYDURULMAZ — sadece
+# değerlerin nominal olduğu ve göreli değerlendirme gerektiği belirtilir.
+ENFLASYON_NOTU = (
+    "ℹ️ TR yüksek enflasyonda: F/K, ROE, büyüme NOMİNAL değerlerdir; enflasyon "
+    "bunları şişirir ve düşük F/K bazen enflasyon muhasebesi kaynaklıdır — "
+    "sektör ortalamasıyla göreli değerlendir."
+)
+
+
 def _bist_ticker(sembol: str) -> str:
     kod = sembol.replace(".IS", "").upper()
     return f"BIST:{kod}"
@@ -52,6 +62,7 @@ def tek_hisse_temel(sembol: str) -> str:
 
     # Genel okuma
     sat += ["", "🧭 ÖZET YORUM", "   " + _genel_yorum(t)]
+    sat += ["", ENFLASYON_NOTU]
     sat += ["", "⚠️ Temel veriler TradingView kaynaklıdır; yatırım tavsiyesi değildir. "
             "Detaylı teknik için /analiz " + kod]
     return "\n".join(sat)
@@ -207,6 +218,8 @@ def buyume_temettu(sembol: str) -> str:
         "",
         f"Sonuç: {tip}",
         aciklama,
+        "",
+        ENFLASYON_NOTU,
         "",
         "⚠️ Genel sınıflandırmadır, yatırım tavsiyesi değildir.",
     ])

@@ -15,6 +15,16 @@ from typing import Optional
 from data.tv_scanner import tv_kalite_tara, TVKalite
 
 
+# TR yüksek enflasyon ortamında nominal çarpanlar çarpıktır (enflasyon
+# muhasebesi / varlık yeniden değerleme). CPI SAYISI UYDURULMAZ — sadece
+# değerlerin nominal olduğu ve göreli değerlendirme gerektiği belirtilir.
+ENFLASYON_NOTU = (
+    "ℹ️ TR yüksek enflasyonda: F/K, ROE, büyüme NOMİNAL değerlerdir; enflasyon "
+    "bunları şişirir ve düşük F/K bazen enflasyon muhasebesi kaynaklıdır — "
+    "sektör ortalamasıyla göreli değerlendir."
+)
+
+
 @dataclass
 class KaliteSonuc:
     sembol: str
@@ -177,5 +187,6 @@ def kalite_tek(sembol: str) -> str:
     for x in s.gerekceler:
         if not x.startswith("🪤"):
             sat.append(f"   {x}")
+    sat += ["", ENFLASYON_NOTU]
     sat += ["", "⚠️ Gerçek temel verilere dayanır; yatırım tavsiyesi değildir."]
     return "\n".join(sat)

@@ -640,3 +640,110 @@ def test_kuresel_metni_render():
                       bist_etkileri=["⚠️ VIX 26 yüksek", "⚠️ USD/TRY %+0.8"], ok=True)
     m = kuresel_metni(kn)
     assert "KÜRESEL" in m and "Risk-OFF" in m and "Brent" in m
+
+
+# ── olay / bilanço takvimi (ağsız — DB + metin mantığı) ───────────────────────
+
+def test_olaylar_metni_bos_portfoy_durust(gecici_db):
+    # Boş portföyde ağ ÇAĞRILMAZ; dürüst mesaj döner.
+    from analysis.olaylar import olaylar_metni
+    m = olaylar_metni(gecici_db)
+    assert "OLAY TAKVİMİ" in m
+    assert "açık pozisyon yok" in m
+
+
+def test_olaylar_metni_takvim_yok_uydurmaz(gecici_db, monkeypatch):
+    # Portföyde hisse var ama yfinance bilanço tarihi vermiyor (None) →
+    # "takvim verisi yok" der, tarih UYDURMAZ.
+    from data.storage import save_islem
+    import analysis.olaylar as olaylar
+    save_islem(gecici_db, "THYAO.IS", "AL", "2026-01-01", 100, 10, 1000)
+    monkeypatch.setattr(olaylar, "yaklasan_bilanco", lambda s: None)
+    m = olaylar.olaylar_metni(gecici_db)
+    assert "1 hisse" in m
+    assert "bulunamadı" in m and "takvim verisi yok" in m
+
+
+def test_portfoy_olaylari_15gun_ici_uyari(gecici_db, monkeypatch):
+    from data.storage import save_islem
+    import analysis.olaylar as olaylar
+    save_islem(gecici_db, "ASELS.IS", "AL", "2026-01-01", 50, 20, 1000)
+    save_islem(gecici_db, "THYAO.IS", "AL", "2026-01-01", 100, 10, 1000)
+
+    def sahte_bilanco(sembol):
+        if sembol.startswith("ASELS"):
+            return {"tarih": "2026-07-15", "gun_kaldi": 5}   # 15 gün içi → uyarı
+        return {"tarih": "2026-09-01", "gun_kaldi": 60}       # uzak → uyarı yok
+
+    monkeypatch.setattr(olaylar, "yaklasan_bilanco", sahte_bilanco)
+    uyarilar = olaylar.portfoy_olaylari(gecici_db)
+    assert len(uyarilar) == 1
+    assert "ASELS" in uyarilar[0] and "oynaklık riski" in uyarilar[0]
+    assert not any("THYAO" in u for u in uyarilar)
+
+
+def test_olaylar_normalize_is_eki():
+    from analysis.olaylar import _normalize
+    assert _normalize("thyao") == "THYAO.IS"
+    assert _normalize("AAPL") == "AAPL.IS"        # harf + ≤5 → .IS
+    assert _normalize("XU100.IS") == "XU100.IS"   # zaten .IS
+    assert _normalize("BRENT.OIL") == "BRENT.OIL" # nokta var → dokunma
+
+
+# ── enflasyon farkındalığı notu (ağsız — scanner stub'lanır) ──────────────────
+
+def _stub_temel():
+    from data.tv_scanner import TVTemel
+    return TVTemel(
+        sembol="THYAO.IS", ad="THY", fiyat=300.0, degisim_pct=1.0,
+        fk=4.0, pddd=1.2, temettu_verim=2.0, roe=25.0, eps=70.0,
+        net_marj=12.0, gelir_buyume=30.0, piyasa_degeri=4e11, sektor="Ulaştırma")
+
+
+def test_temel_enflasyon_notu_gecer(monkeypatch):
+    import analysis.temel as temel
+    monkeypatch.setattr(temel, "tv_temel_tara",
+                        lambda tickers=None, **kw: (True, "", [_stub_temel()]))
+    m = temel.tek_hisse_temel("THYAO")
+    assert "NOMİNAL" in m and "enflasyon muhasebesi" in m
+    assert "F/K" in m   # mevcut çıktı bozulmadı
+
+
+def test_buyume_temettu_enflasyon_notu_gecer(monkeypatch):
+    import analysis.temel as temel
+    monkeypatch.setattr(temel, "tv_temel_tara",
+                        lambda tickers=None, **kw: (True, "", [_stub_temel()]))
+    m = temel.buyume_temettu("THYAO")
+    assert "NOMİNAL" in m and "sektör ortalamasıyla göreli" in m
+
+
+def test_kalite_enflasyon_notu_gecer(monkeypatch):
+    from data.tv_scanner import TVKalite
+    import analysis.kalite as kalite
+    k = TVKalite(
+        sembol="THYAO.IS", ad="THY", fiyat=300.0, sektor="Ulaştırma",
+        fk=4.0, pddd=1.2, roe=25.0, roic=15.0, net_marj=12.0, fcf_marj=8.0,
+        borc_ozkaynak=0.5, cari_oran=1.6, gelir_buyume=30.0,
+        net_kar_buyume=20.0, temettu=2.0, piyasa_degeri=4e11, perf_1m=5.0)
+    monkeypatch.setattr(kalite, "tv_kalite_tara",
+                        lambda tickers=None, **kw: (True, "", [k]))
+    m = kalite.kalite_tek("THYAO")
+    assert "NOMİNAL" in m and "enflasyon" in m
+    assert "KALİTE SKORU" in m   # mevcut çıktı bozulmadı
+
+
+# ── rejim-duyarlı faktör ağırlıkları (ağsız) ──────────────────────────────────
+
+def test_rejim_agirliklari_rotasyon():
+    from analysis.faktor import rejim_agirliklari
+    # Risk-off + ayı → savunmacı (kalite yüksek, momentum düşük)
+    a_def, n_def = rejim_agirliklari(-2, "Ayı")
+    assert a_def["kalite"] > a_def["momentum"]
+    assert "SAVUNMACI" in n_def
+    # Risk-on + boğa → atak (momentum artar)
+    a_atk, n_atk = rejim_agirliklari(2, "Boğa")
+    assert a_atk["momentum"] > a_def["momentum"]
+    assert "ATAK" in n_atk
+    # Her profil toplam ~1.0
+    for a in (a_def, a_atk, rejim_agirliklari(0, "Yatay")[0]):
+        assert abs(sum(a.values()) - 1.0) < 0.001

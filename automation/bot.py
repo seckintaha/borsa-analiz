@@ -108,6 +108,7 @@ def cmd_yardim() -> str:
         "/ekle SEMBOL ADET [FIYAT]   örn: /ekle THYAO 100 280\n"
         "/sat SEMBOL [ADET]          örn: /sat THYAO 50\n"
         "/alarmlar    Stop/hedef/zarar alarmları\n"
+        "/olaylar     Yaklaşan bilanço/temettü takvimi\n"
         "/portfoy     Zayıflık/korelasyon/hedge analizi\n"
         "/cesitlendir Çeşitlendirme önerisi (eksik sektör)\n"
         "/aliskanlik  İşlem alışkanlık analizi + 3 kural\n"
@@ -259,6 +260,16 @@ def cmd_global() -> str:
         return kuresel_metni()
     except Exception as exc:
         return f"❌ Küresel nabız hatası: {exc}"
+
+
+def cmd_olaylar() -> str:
+    """Portföydeki hisselerin yaklaşan bilanço/temettü olayları."""
+    try:
+        import config
+        from analysis.olaylar import olaylar_metni
+        return olaylar_metni(config.DB_PATH)
+    except Exception as exc:
+        return f"❌ Olay takvimi hatası: {exc}"
 
 
 def cmd_duyarlilik() -> str:
@@ -889,6 +900,9 @@ def _isle(token: str, chat_id: str, mesaj: dict) -> None:
     elif komut in ("/global", "/dunya", "/dünya"):
         gonder(token, chat_id, "⏳ Küresel piyasa nabzı çekiliyor...")
         yanit = cmd_global()
+    elif komut in ("/olaylar", "/takvim"):
+        gonder(token, chat_id, "⏳ Bilanço/temettü takvimi kontrol ediliyor...")
+        yanit = cmd_olaylar()
     elif komut in ("/duyarlilik", "/duyarlılık"):
         gonder(token, chat_id, "⏳ Piyasa duyarlılığı hesaplanıyor...")
         yanit = cmd_duyarlilik()
