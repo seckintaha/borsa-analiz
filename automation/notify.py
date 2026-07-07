@@ -308,11 +308,13 @@ def tam_bist_rapor_metni(
     yorum: str = "",
     mod: str = "eod",
     portfoy_alarmlari=None,
+    kuresel=None,
 ) -> str:
     """
     Tüm BIST taramasından kapsamlı Telegram raporu üretir.
     AL adayları + piyasa geneli + haberler + halka arzlar + kısa yorum.
     portfoy_alarmlari: tetiklenen Alarm listesi (varsa en üstte gösterilir).
+    kuresel: KureselNabiz (top-down bağlam; varsa rejimden sonra gösterilir).
     """
     baslik = "📊 BIST Tam Piyasa Analizi" if mod == "eod" else "⏱️ BIST Gün-İçi Analizi"
     zaman_fmt = zaman[:16].replace("T", " ")
@@ -321,8 +323,14 @@ def tam_bist_rapor_metni(
         f"{baslik} — {zaman_fmt}",
         "",
         f"🌐 Rejim: {rejim_str}",
-        "",
     ]
+
+    # Küresel bağlam (top-down) — rejimden hemen sonra
+    if kuresel is not None and getattr(kuresel, "ok", False):
+        sat.append(f"🌍 Küresel: {kuresel.risk_etiket}")
+        for e in kuresel.bist_etkileri[:2]:
+            sat.append(f"   {e}")
+    sat.append("")
 
     # Portföy alarmları — en üstte (kritik)
     if portfoy_alarmlari:
@@ -482,6 +490,14 @@ def tam_bist_bildirim(
     except Exception:
         alarmlar = []
 
+    # Küresel/makro nabız (top-down bağlam) — dünya piyasaları
+    kuresel = None
+    try:
+        from analysis.kuresel_piyasa import kuresel_nabiz
+        kuresel = kuresel_nabiz()
+    except Exception:
+        kuresel = None
+
     # Kısa yorum
     yorum = piyasa_yorumu(
         rejim=rejim_str,
@@ -502,6 +518,7 @@ def tam_bist_bildirim(
         yorum=yorum,
         mod=mod,
         portfoy_alarmlari=alarmlar,
+        kuresel=kuresel,
     )
 
     tg_ok, tg_hata = telegram_gonder(metin)

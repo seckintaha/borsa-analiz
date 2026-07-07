@@ -617,3 +617,26 @@ def test_liste_ozet_tek_satir_veri_cokmez(monkeypatch):
     rows = panel._liste_ozet.__wrapped__("AAA")
     assert rows and rows[0]["Sembol"] == "AAA"
     assert rows[0]["Durum"] == "⚠️ Yetersiz veri"
+
+
+# ── küresel piyasa nabzı (ağsız — metin/mantık) ───────────────────────────────
+
+def test_kuresel_metni_veri_yok():
+    from analysis.kuresel_piyasa import kuresel_metni, KureselNabiz
+    # ok=False (hiç veri yok) → dürüst mesaj, çökme yok
+    bos = KureselNabiz(varliklar=[], risk_skoru=0, risk_etiket="Nötr", bist_etkileri=[], ok=False)
+    assert "Veri alınamadı" in kuresel_metni(bos)
+
+
+def test_kuresel_metni_render():
+    from analysis.kuresel_piyasa import kuresel_metni, KureselNabiz, VarlikVeri
+    v = [
+        VarlikVeri("^GSPC","S&P 500 (ABD)","abd","deg",5000.0,-0.4),
+        VarlikVeri("^VIX","VIX (korku endeksi)","risk","seviye",26.0,3.6),
+        VarlikVeri("TRY=X","USD/TRY","kur","deg",34.0,0.8),
+        VarlikVeri("BZ=F","Brent petrol","emtia","deg",76.0,5.7),
+    ]
+    kn = KureselNabiz(varliklar=v, risk_skoru=-2, risk_etiket="Risk-OFF 🔴",
+                      bist_etkileri=["⚠️ VIX 26 yüksek", "⚠️ USD/TRY %+0.8"], ok=True)
+    m = kuresel_metni(kn)
+    assert "KÜRESEL" in m and "Risk-OFF" in m and "Brent" in m

@@ -91,6 +91,7 @@ def cmd_yardim() -> str:
         "/performans Geçmiş önerilerim endeksi geçti mi\n"
         "/deger     Değer yatırımı taraması (ucuz+kârlı)\n"
         "/sektorler Sektör analizi (aylık performans)\n"
+        "/global    Küresel piyasa & makro nabzı (top-down)\n"
         "/duyarlilik Korku/açgözlülük endeksi\n"
         "/fikirler  Günün 5 işlem fikri (giriş/hedef/stop)\n\n"
         "🔍 HİSSE\n"
@@ -249,6 +250,15 @@ def cmd_cesitlendir() -> str:
         return cesitlendirme_onerisi(config.DB_PATH)
     except Exception as exc:
         return f"❌ Çeşitlendirme hatası: {exc}"
+
+
+def cmd_global() -> str:
+    """Küresel piyasa & makro nabzı (top-down bağlam)."""
+    try:
+        from analysis.kuresel_piyasa import kuresel_metni
+        return kuresel_metni()
+    except Exception as exc:
+        return f"❌ Küresel nabız hatası: {exc}"
 
 
 def cmd_duyarlilik() -> str:
@@ -876,6 +886,9 @@ def _isle(token: str, chat_id: str, mesaj: dict) -> None:
     elif komut in ("/cesitlendir", "/çeşitlendir"):
         gonder(token, chat_id, "⏳ Çeşitlendirme önerisi hazırlanıyor...")
         yanit = cmd_cesitlendir()
+    elif komut in ("/global", "/dunya", "/dünya"):
+        gonder(token, chat_id, "⏳ Küresel piyasa nabzı çekiliyor...")
+        yanit = cmd_global()
     elif komut in ("/duyarlilik", "/duyarlılık"):
         gonder(token, chat_id, "⏳ Piyasa duyarlılığı hesaplanıyor...")
         yanit = cmd_duyarlilik()
