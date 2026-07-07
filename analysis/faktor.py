@@ -286,6 +286,37 @@ AGIRLIKLAR = {
 }
 
 
+def rejim_agirliklari(risk_skoru: Optional[int] = 0,
+                      bist_rejim: str = "") -> tuple[dict, str]:
+    """
+    Küresel risk (kuresel_nabiz skoru) + BIST rejimine göre faktör ağırlıklarını
+    DİNAMİK ayarlar (senior davranış: rejimde faktör rotasyonu).
+
+    Risk-OFF / Ayı → SAVUNMACI: Kalite + Değer + Trend ↑, Momentum + Büyüme ↓.
+    Risk-ON / Boğa → ATAK: Momentum + Büyüme ↑, Kalite hafif ↓.
+    Nötr → temel ağırlıklar. (Her profil toplam 1.00'dir.)
+
+    Dönüş: (agirliklar, açıklama).
+    """
+    puan = 0
+    if risk_skoru is not None:
+        if risk_skoru >= 2:   puan += 1     # risk-on
+        elif risk_skoru <= -2: puan -= 1    # risk-off
+    if bist_rejim == "Boğa":  puan += 1
+    elif bist_rejim == "Ayı": puan -= 1
+
+    if puan <= -1:
+        return ({"kalite": 0.35, "deger": 0.28, "momentum": 0.10,
+                 "buyume": 0.12, "trend": 0.15},
+                "🛡️ SAVUNMACI mod (risk-off/ayı): kalite + değer + trend ağırlıklı, momentum kısıldı")
+    if puan >= 1:
+        return ({"kalite": 0.24, "deger": 0.22, "momentum": 0.28,
+                 "buyume": 0.18, "trend": 0.08},
+                "⚔️ ATAK mod (risk-on/boğa): momentum + büyüme ağırlığı artırıldı")
+    return (dict(AGIRLIKLAR),
+            "⚖️ DENGELİ mod (nötr rejim): temel faktör ağırlıkları")
+
+
 def birlesik_skor(f: FaktorKayit, agirliklar: dict = AGIRLIKLAR) -> float:
     """
     Faktör persentillerinin ağırlıklı harmanı (0-100).

@@ -60,6 +60,7 @@ class AylikOneri:
     piotroski: int = 0
     piotroski_n: int = 0
     magic_sira: Optional[int] = None
+    rejim_notu: str = ""              # rejim-duyarlı ağırlık açıklaması
 
 
 def _getiri_yuzde(fr, gun: int) -> Optional[float]:
@@ -83,7 +84,7 @@ def ayin_onerileri(db_path: str, n: int = 10) -> tuple[bool, str, list["AylikOne
     from data.tv_scanner import tv_tara, tv_kalite_tara
     from analysis.kalite import kalite_skoru
     from analysis.teknik_derin import analiz_et
-    from analysis.faktor import faktor_evreni, EvrenGirdi
+    from analysis.faktor import faktor_evreni, EvrenGirdi, rejim_agirliklari
     from data.access import veri_getir
 
     tv_ok, tv_hata, tv_satirlar = tv_tara(limit=1000)
@@ -94,6 +95,26 @@ def ayin_onerileri(db_path: str, n: int = 10) -> tuple[bool, str, list["AylikOne
         return False, f"Kalite verisi hatası: {kal_hata}", []
 
     tv_map = {s.sembol: s for s in tv_satirlar}
+
+    # ── Rejim-duyarlı faktör ağırlıkları (top-down): küresel risk + BIST rejimi ──
+    risk_skoru = 0
+    bist_rejim = ""
+    try:
+        from analysis.kuresel_piyasa import kuresel_nabiz
+        kn = kuresel_nabiz()
+        risk_skoru = kn.risk_skoru if kn.ok else 0
+    except Exception:
+        pass
+    try:
+        import config
+        from analysis import macro
+        fr_x = veri_getir(db_path, config.MACRO.get("rejim_endeksi", "XU100.IS"),
+                          period="2y", interval="1d")
+        if fr_x.ok and fr_x.data is not None:
+            bist_rejim = macro.rejim_tespit(fr_x.data).rejim
+    except Exception:
+        pass
+    agirliklar, rejim_notu = rejim_agirliklari(risk_skoru, bist_rejim)
 
     # ── 1) Evreni oluştur (min likidite filtresi; teknik veri eşleştir) ──
     girdiler: list[EvrenGirdi] = []
@@ -106,8 +127,8 @@ def ayin_onerileri(db_path: str, n: int = 10) -> tuple[bool, str, list["AylikOne
     if not girdiler:
         return True, "Evrende yeterli veri yok.", []
 
-    # ── 2) Kesitsel faktör motorunu çalıştır ──
-    kayitlar = faktor_evreni(girdiler)
+    # ── 2) Kesitsel faktör motorunu REJİM-DUYARLI ağırlıkla çalıştır ──
+    kayitlar = faktor_evreni(girdiler, agirliklar=agirliklar)
     kayit_map = {r.sembol: r for r in kayitlar}
 
     # ── 3) Köpük/tuzak/likidite eleme + faktör eşiği ──
@@ -181,7 +202,7 @@ def ayin_onerileri(db_path: str, n: int = 10) -> tuple[bool, str, list["AylikOne
             deger_p=r.deger_p, kalite_p=r.kalite_p, momentum_p=r.momentum_p,
             buyume_p=r.buyume_p, trend_p=r.trend_p, birlesik=r.birlesik,
             piotroski=r.piotroski, piotroski_n=r.piotroski_n,
-            magic_sira=r.magic_sira,
+            magic_sira=r.magic_sira, rejim_notu=rejim_notu,
         ))
 
     return True, "", oneriler
@@ -263,9 +284,12 @@ def ayin_onerileri_metni(oneriler: list["AylikOneri"], hata: str = "") -> str:
     if not oneriler:
         return f"{baslik}\n\nBu ay kriterleri karşılayan hisse yok."
 
+    rejim_notu = getattr(oneriler[0], "rejim_notu", "") if oneriler else ""
     sat = [baslik,
-           "(Çok-faktör: Kalite+Değer+Momentum+Büyüme+Trend · köpük/tavan elenir)",
-           ""]
+           "(Çok-faktör: Kalite+Değer+Momentum+Büyüme+Trend · köpük/tavan elenir)"]
+    if rejim_notu:
+        sat.append(rejim_notu)     # rejim-duyarlı ağırlık (top-down)
+    sat.append("")
     for i, o in enumerate(oneriler, 1):
         sat.append(f"{i}) {o.sembol} · {o.sektor[:20]} · faktör skor {o.birlesik:.0f}/100")
         # Profesyonel faktör kırılımı
