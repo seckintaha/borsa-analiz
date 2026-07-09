@@ -103,6 +103,7 @@ def cmd_yardim() -> str:
         "/buyume SEMBOL    Büyüme mi temettü hissesi mi\n"
         "/sektor <ad>      Bir sektördeki hisseler\n"
         "/haberetki SEMBOL Haberin işlem etkisi\n"
+        "/haberyorum SEMBOL LLM haber yorumu (anahtar gerekir)\n"
         "   (örn: /analiz THYAO)\n\n"
         "💼 PORTFÖY (Telegram'dan yönet)\n"
         "/portfoyum  Pozisyonların + canlı kâr/zarar\n"
@@ -375,6 +376,57 @@ def cmd_analiz(sembol: str) -> str:
         return metin_ozet(analiz_et(fr.data, sem))
     except Exception as exc:
         return f"❌ Analiz hatası: {exc}"
+
+
+def cmd_haberyorum(sembol: str) -> str:
+    """
+    LLM haber yorumu (opsiyonel katman). GERÇEK haber başlıklarını Claude'a
+    yorumlatır. Anahtar/paket yoksa deterministik haber sinyaline TEMİZCE düşer
+    (yarı-bozuk hâl yok). LLM çıktısı 'yorum' katmanıdır — sayısal motora karışmaz.
+    """
+    try:
+        import config
+        from analysis.kap import yfinance_haberleri, haber_sinyali, haber_sinyali_metni
+        from analysis import llm
+        if not sembol:
+            return "Kullanım: /haberyorum THYAO"
+        sem = sembol.upper()
+        if not sem.endswith(".IS") and sem.isalpha() and len(sem) <= 5:
+            sem += ".IS"
+        kod = sem.replace(".IS", "")
+
+        kayitlar = yfinance_haberleri([sem], limit_per_hisse=8)
+        try:
+            hr = haber_sinyali(sem, config.DB_PATH, config.HABER.get("rss_feeds"))
+        except Exception:
+            hr = None
+        basliklar = [f"- {k.baslik} ({k.kaynak})" for k in kayitlar[:10]]
+        if hr and hr.ok:
+            basliklar += [f"- {b}" for _, b, _ in getattr(hr, "basliklar", [])[:6]]
+        if not basliklar:
+            return (f"📭 {kod} için taze haber bulunamadı. LLM yorumu için haber "
+                    "gerekir; şimdilik teknik/temel komutları kullan (/analiz, /temel).")
+
+        sistem = ("Sen dikkatli, temkinli bir Türk borsa analistisin. SANA VERİLEN "
+                  "GERÇEK haber başlıklarını yorumla — başlıklarda olmayan hiçbir şeyi "
+                  "UYDURMA, veri yoksa 'başlıklardan çıkmıyor' de. Şunları kısa ve net "
+                  "Türkçe ver: 1) genel duygu (pozitif/negatif/nötr), 2) kısa vade olası "
+                  "etki, 3) uzun vade, 4) dikkat edilecek riskler. AL/SAT tavsiyesi verme.")
+        kullanici = f"{kod} hissesi için son haber başlıkları:\n" + "\n".join(basliklar[:14])
+        sonuc = llm.cevapla(sistem, kullanici,
+                            model=config.LLM.get("model", "claude-opus-4-8"),
+                            max_tokens=config.LLM.get("max_tokens", 1200))
+        if sonuc.ok:
+            return (f"🤖 {kod} — LLM HABER YORUMU (yorum katmanı)\n\n{sonuc.metin}\n\n"
+                    "⚠️ Bu bir LLM yorumudur; verilen başlıklara dayanır, sayısal "
+                    "faktör skoruna dahil DEĞİLDİR ve yatırım tavsiyesi değildir.")
+        # Anahtar/paket yok → deterministik analize temiz düşüş
+        det = haber_sinyali_metni(hr) if (hr and hasattr(hr, "sembol")) else "Deterministik analiz yok."
+        return (f"ℹ️ LLM yorumu aktif değil ({sonuc.not_}).\n"
+                "Aktifleştirmek için: `pip install anthropic` + .env'e ANTHROPIC_API_KEY.\n"
+                "Şimdilik deterministik haber analizi:\n\n" + det)
+    except Exception as exc:
+        return f"❌ Haber yorumu hatası: {exc}"
 
 
 def cmd_haberetki(sembol: str) -> str:
@@ -949,6 +1001,9 @@ def _isle(token: str, chat_id: str, mesaj: dict) -> None:
     elif komut == "/haberetki":
         gonder(token, chat_id, f"⏳ {arg or 'hisse'} haberleri taranıyor...")
         yanit = cmd_haberetki(arg)
+    elif komut in ("/haberyorum", "/llmhaber"):
+        gonder(token, chat_id, f"⏳ {arg or 'hisse'} haberleri LLM ile yorumlanıyor...")
+        yanit = cmd_haberyorum(arg)
     elif komut == "/aliskanlik":
         yanit = cmd_aliskanlik()
     elif komut == "/ekle":
