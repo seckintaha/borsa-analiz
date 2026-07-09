@@ -89,6 +89,7 @@ def cmd_yardim() -> str:
         "/aylik     Aylık özet (portföy + piyasa)\n"
         "/oneriler  Ayın hisse önerileri (çok-faktörlü)\n"
         "/performans Geçmiş önerilerim endeksi geçti mi\n"
+        "/modeltest Faktörler geçmişte işe yaramış mı (kanıt)\n"
         "/deger     Değer yatırımı taraması (ucuz+kârlı)\n"
         "/sektorler Sektör analizi (aylık performans)\n"
         "/global    Küresel piyasa & makro nabzı (top-down)\n"
@@ -260,6 +261,16 @@ def cmd_global() -> str:
         return kuresel_metni()
     except Exception as exc:
         return f"❌ Küresel nabız hatası: {exc}"
+
+
+def cmd_modeltest() -> str:
+    """Faktör kanıtı — modelin fiyat-temelli faktörleri geçmişte işe yaramış mı."""
+    try:
+        import config
+        from analysis.faktor_backtest import faktor_kanit_metni
+        return faktor_kanit_metni(config.DB_PATH)
+    except Exception as exc:
+        return f"❌ Faktör kanıtı hatası: {exc}"
 
 
 def cmd_olaylar() -> str:
@@ -903,6 +914,9 @@ def _isle(token: str, chat_id: str, mesaj: dict) -> None:
     elif komut in ("/olaylar", "/takvim"):
         gonder(token, chat_id, "⏳ Bilanço/temettü takvimi kontrol ediliyor...")
         yanit = cmd_olaylar()
+    elif komut in ("/modeltest", "/faktortest"):
+        gonder(token, chat_id, "⏳ Faktör kanıtı: likit sepet geçmişi analiz ediliyor (1-2 dk)...")
+        yanit = cmd_modeltest()
     elif komut in ("/duyarlilik", "/duyarlılık"):
         gonder(token, chat_id, "⏳ Piyasa duyarlılığı hesaplanıyor...")
         yanit = cmd_duyarlilik()
