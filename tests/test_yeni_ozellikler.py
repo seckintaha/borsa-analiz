@@ -732,6 +732,85 @@ def test_kalite_enflasyon_notu_gecer(monkeypatch):
     assert "KALİTE SKORU" in m   # mevcut çıktı bozulmadı
 
 
+# ── portföy optimizasyonu (ağsız — saf matematik + boş DB) ────────────────────
+
+def test_optimize_bos_portfoy_durust(gecici_db):
+    """Boş portföyde ağ ÇAĞRILMAZ; dürüst mesaj döner, çökme yok."""
+    from analysis.optimize import portfoy_optimizasyon, optimize_metni
+    r = portfoy_optimizasyon(gecici_db)
+    assert r["ok"] is False
+    assert r["mesaj"] == "portföy boş"
+    m = optimize_metni(gecici_db)
+    assert "PORTFÖY OPTİMİZASYONU" in m
+    assert "boş" in m
+    # Metinde yatırım tavsiyesi uyarısı boş portföyde bile çökmeden üretilebilmeli
+    assert "OPTİMİZASYONU" in m
+
+
+def test_optimize_agirlik_semalari_toplam_bir():
+    """Üç şema da uzun-only ve toplamı ~1.0 olmalı."""
+    from analysis.optimize import _esit_agirlik, _ters_vol_agirlik, _min_varyans_agirlik
+    vol = np.array([0.2, 0.4, 0.1, 0.3])
+    # Pozitif tanımlı kovaryans (rastgele ama simetrik + köşegen baskın)
+    rng = np.random.default_rng(3)
+    a = rng.normal(0, 1, (4, 4))
+    cov = a @ a.T + np.eye(4) * 0.5
+    for w in (_esit_agirlik(4), _ters_vol_agirlik(vol), _min_varyans_agirlik(cov, vol)):
+        assert abs(w.sum() - 1.0) < 1e-9
+        assert (w >= -1e-12).all()           # uzun-only (negatif yok)
+
+
+def test_optimize_ters_vol_yuksek_vol_dusuk_agirlik():
+    """Ters-volatilite: yüksek oynaklıklı hisse daha DÜŞÜK ağırlık almalı."""
+    from analysis.optimize import _ters_vol_agirlik
+    vol = np.array([0.10, 0.20, 0.40])       # artan oynaklık
+    w = _ters_vol_agirlik(vol)
+    assert w[0] > w[1] > w[2]                 # düşük vol → yüksek ağırlık
+    assert abs(w.sum() - 1.0) < 1e-9
+    # Sıfır volatilite sıfıra bölmeyle çökmemeli
+    w2 = _ters_vol_agirlik(np.array([0.0, 0.2]))
+    assert np.isfinite(w2).all() and abs(w2.sum() - 1.0) < 1e-9
+
+
+def test_optimize_ters_vol_sentetik_getiri_matrisi():
+    """Sentetik getiri matrisinden yıllık vol + ters-vol ağırlığı: sakin hisse ağır basar."""
+    from analysis.optimize import _yillik_vol, _ters_vol_agirlik
+    rng = np.random.default_rng(7)
+    n = 300
+    # A: düşük oynaklık (std 0.005), B: yüksek oynaklık (std 0.03)
+    getiri_df = pd.DataFrame({
+        "SAKIN": rng.normal(0, 0.005, n),
+        "OYNAK": rng.normal(0, 0.030, n),
+    })
+    vol = _yillik_vol(getiri_df)
+    assert vol[0] < vol[1]                    # sakin hisse daha düşük yıllık vol
+    w = _ters_vol_agirlik(vol)
+    assert w[0] > w[1]                        # ters-vol → sakin hisseye daha çok ağırlık
+
+
+def test_optimize_min_varyans_tekil_matris_ters_vole_duser():
+    """Tekil (ters alınamaz) kovaryansta min-varyans ters-volatiliteye düşmeli, çökmemeli."""
+    from analysis.optimize import _min_varyans_agirlik, _ters_vol_agirlik
+    # İki özdeş satır → tekil matris
+    tekil = np.array([[1.0, 1.0], [1.0, 1.0]])
+    vol = np.array([0.1, 0.4])
+    w = _min_varyans_agirlik(tekil, vol)
+    beklenen = _ters_vol_agirlik(vol)
+    assert np.allclose(w, beklenen)
+    assert abs(w.sum() - 1.0) < 1e-9
+
+
+def test_optimize_portfoy_vol_ve_normalize_kenar_durum():
+    """Portföy vol ve normalize None/sıfır/tek-hisse kenar durumlarında çökmemeli."""
+    from analysis.optimize import _portfoy_vol, _normalize, _min_varyans_agirlik
+    # Tek hisse: min-varyans = %100
+    assert np.allclose(_min_varyans_agirlik(np.array([[0.04]]), np.array([0.2])), [1.0])
+    # Sıfır ağırlık toplamı → eşit dağıtım
+    assert np.allclose(_normalize(np.array([0.0, 0.0, 0.0])), [1/3, 1/3, 1/3])
+    # Boş girdi
+    assert _portfoy_vol(np.array([]), np.zeros((0, 0))) == 0.0
+
+
 # ── rejim-duyarlı faktör ağırlıkları (ağsız) ──────────────────────────────────
 
 def test_rejim_agirliklari_rotasyon():

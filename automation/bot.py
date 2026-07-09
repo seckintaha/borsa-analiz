@@ -110,6 +110,7 @@ def cmd_yardim() -> str:
         "/sat SEMBOL [ADET]          örn: /sat THYAO 50\n"
         "/alarmlar    Stop/hedef/zarar alarmları\n"
         "/olaylar     Yaklaşan bilanço/temettü takvimi\n"
+        "/optimize    Risk-optimal portföy ağırlığı\n"
         "/portfoy     Zayıflık/korelasyon/hedge analizi\n"
         "/cesitlendir Çeşitlendirme önerisi (eksik sektör)\n"
         "/aliskanlik  İşlem alışkanlık analizi + 3 kural\n"
@@ -261,6 +262,16 @@ def cmd_global() -> str:
         return kuresel_metni()
     except Exception as exc:
         return f"❌ Küresel nabız hatası: {exc}"
+
+
+def cmd_optimize() -> str:
+    """Portföy optimizasyonu — risk-optimal ağırlık önerisi (gerçek pozisyonlar)."""
+    try:
+        import config
+        from analysis.optimize import optimize_metni
+        return optimize_metni(config.DB_PATH)
+    except Exception as exc:
+        return f"❌ Optimizasyon hatası: {exc}"
 
 
 def cmd_modeltest() -> str:
@@ -917,6 +928,9 @@ def _isle(token: str, chat_id: str, mesaj: dict) -> None:
     elif komut in ("/modeltest", "/faktortest"):
         gonder(token, chat_id, "⏳ Faktör kanıtı: likit sepet geçmişi analiz ediliyor (1-2 dk)...")
         yanit = cmd_modeltest()
+    elif komut in ("/optimize", "/optimizasyon"):
+        gonder(token, chat_id, "⏳ Portföy risk-optimizasyonu hesaplanıyor...")
+        yanit = cmd_optimize()
     elif komut in ("/duyarlilik", "/duyarlılık"):
         gonder(token, chat_id, "⏳ Piyasa duyarlılığı hesaplanıyor...")
         yanit = cmd_duyarlilik()
