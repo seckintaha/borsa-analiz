@@ -826,3 +826,13 @@ def test_rejim_agirliklari_rotasyon():
     # Her profil toplam ~1.0
     for a in (a_def, a_atk, rejim_agirliklari(0, "Yatay")[0]):
         assert abs(sum(a.values()) - 1.0) < 0.001
+
+
+# ── ticker normalizasyon (Türkçe İ bozulması) ─────────────────────────────────
+
+def test_normalize_ticker_turkce():
+    from data.fetcher import normalize_ticker
+    assert normalize_ticker("GEDİK.IS") == "GEDIK.IS"   # noktalı İ → I
+    assert normalize_ticker("gedik") == "GEDIK"
+    assert normalize_ticker(" thyao.is ") == "THYAO.IS"
+    assert normalize_ticker("ŞİŞE") == "SISE"

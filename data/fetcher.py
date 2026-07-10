@@ -109,6 +109,20 @@ def bosluk_tespit(df: pd.DataFrame, bosluk_gun: int) -> str:
 
 # ── Canlı çekme ───────────────────────────────────────────────────────────────
 
+# BIST ticker'lari ASCII'dir. Turkce locale/kopyalama bir sembole 'İ' (U+0130,
+# noktali buyuk I) ya da baska Turkce harf sokabilir (or. 'GEDİK.IS') → yfinance
+# bulamaz. Bu tablo ticker'i ASCII'ye zorlar; boylece cekme bagisik olur.
+_TR_ASCII = str.maketrans({
+    "İ": "I", "ı": "I", "Ş": "S", "ş": "S", "Ğ": "G", "ğ": "G",
+    "Ü": "U", "ü": "U", "Ö": "O", "ö": "O", "Ç": "C", "ç": "C",
+})
+
+
+def normalize_ticker(symbol: str) -> str:
+    """Sembolu ASCII-buyuk hale getirir (Turkce harf bozulmalarini duzeltir)."""
+    return (symbol or "").strip().translate(_TR_ASCII).upper()
+
+
 def fetch_history(
     symbol: str,
     period: str = "1y",
@@ -123,7 +137,7 @@ def fetch_history(
     Gecici hatalarda ustel beklemeyle yeniden dener; veri kalitesini ve
     guncelligini denetler. Basarisizsa ok=False ve aciklayici not doner.
     """
-    symbol = symbol.strip().upper()
+    symbol = normalize_ticker(symbol)
     fetched_at = _now_iso()
 
     try:
