@@ -844,7 +844,9 @@ def test_sektor_gorel_medyan():
     from analysis.temel import _sektor_gorel
     from data.tv_scanner import TVTemel
     def mk(sem, fk, roe, pddd, sek="Finance"):
-        return TVTemel(sem, sem, 10, sek, fk, pddd, 2.0, roe, 1.0, 15, 20, 1e9)
+        return TVTemel(sembol=sem, ad=sem, fiyat=10, degisim_pct=0, fk=fk,
+                       pddd=pddd, temettu_verim=2.0, roe=roe, eps=1.0,
+                       net_marj=15, gelir_buyume=20, piyasa_degeri=1e9, sektor=sek)
     hedef = mk("X.IS", 4.0, 30, 1.2)
     evren = [hedef, mk("A.IS",8,20,1.0), mk("B.IS",9,22,1.1), mk("C.IS",10,24,1.2),
              mk("D.IS",7,25,0.9,"Tech")]  # Tech sektörü sayılmaz
