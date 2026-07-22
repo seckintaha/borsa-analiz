@@ -94,6 +94,41 @@ def tek_hisse_temel(sembol: str) -> str:
     if t.piyasa_degeri:
         sat.append(f"   Piyasa değeri: {t.piyasa_degeri/1e9:.1f} milyar ₺")
 
+    # Çeyrek momentum + bilanço tazeliği (verinin ne kadar güncel olduğunu ve
+    # kârın hızlanıp yavaşladığını gösterir — TradingView gerçek verisi).
+    try:
+        from data.tv_scanner import tv_bilanco_tara
+        from datetime import datetime as _dt
+        okb, _hb, bl = tv_bilanco_tara(tickers=[_bist_ticker(sembol)])
+        if okb and bl:
+            b = bl[0]
+            def _kirp(x):  # küçük bazdan hesaplanan uç %'yi profesyonelce göster
+                return ">+200" if x > 200 else ("<-200" if x < -200 else f"{x:+.0f}")
+            mom = []
+            if b.eps_yoy is not None:
+                yon = "hızlanıyor 📈" if b.eps_yoy > 5 else ("yavaşlıyor 📉" if b.eps_yoy < -5 else "yatay")
+                mom.append(f"   Yıllık kâr büyümesi (EPS): %{_kirp(b.eps_yoy)} ({yon})")
+            if b.eps_qoq is not None:
+                mom.append(f"   Çeyreklik kâr değişimi (QoQ): %{_kirp(b.eps_qoq)}")
+            if b.gelir_qoq is not None:
+                mom.append(f"   Çeyreklik gelir değişimi: %{_kirp(b.gelir_qoq)}")
+            if mom:
+                sat += ["", "📊 ÇEYREK MOMENTUM"] + mom
+            takvim = []
+            if b.son_bilanco_ts:
+                takvim.append(f"   Son bilanço: {_dt.fromtimestamp(b.son_bilanco_ts):%Y-%m-%d} "
+                              "(veri buna dayanır)")
+            if b.sonraki_bilanco_ts:
+                nd = _dt.fromtimestamp(b.sonraki_bilanco_ts).date()
+                gk = (nd - _dt.now().date()).days
+                if gk >= 0:
+                    uyari = " ⚠️ yakında — oynaklık riski" if gk <= 10 else ""
+                    takvim.append(f"   Sonraki bilanço: {nd} (~{gk} gün sonra){uyari}")
+            if takvim:
+                sat += ["", "📅 BİLANÇO TAKVİMİ"] + takvim
+    except Exception:
+        pass
+
     # Sektör-göreli değerleme (enflasyon-nötr — sektör içinde herkes benzer şişer,
     # göreli konum daha anlamlıdır). Bir evren taraması ile sektör medyanı bulunur.
     try:

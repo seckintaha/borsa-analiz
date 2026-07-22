@@ -57,17 +57,45 @@ def _tarihe_cevir(deger) -> Optional[date]:
     return None
 
 
+def _tv_bilanco_tarih(sembol: str) -> Optional[dict]:
+    """
+    TradingView'dan sonraki bilanço tarihini çeker (BIST'te yfinance'ten çok
+    daha güvenilir). Döner: {tarih, gun_kaldi, son_bilanco, eps_qoq, ...} veya None.
+    """
+    try:
+        from data.tv_scanner import tv_bilanco_tara
+        kod = _normalize(sembol).replace(".IS", "")
+        ok, _h, liste = tv_bilanco_tara(tickers=[f"BIST:{kod}"])
+        if not ok or not liste:
+            return None
+        b = liste[0]
+        bugun = _bugun()
+        out = {"eps_qoq": b.eps_qoq, "eps_yoy": b.eps_yoy, "gelir_qoq": b.gelir_qoq}
+        if b.son_bilanco_ts:
+            out["son_bilanco"] = datetime.fromtimestamp(b.son_bilanco_ts).date().isoformat()
+        if b.sonraki_bilanco_ts:
+            nd = datetime.fromtimestamp(b.sonraki_bilanco_ts).date()
+            if nd >= bugun:
+                out["tarih"] = nd.isoformat()
+                out["gun_kaldi"] = (nd - bugun).days
+        return out if (out.get("tarih") or out.get("son_bilanco")) else None
+    except Exception:
+        return None
+
+
 def yaklasan_bilanco(sembol: str) -> Optional[dict]:
     """
-    Bir sonraki bilanço tarihini yfinance'ten bulur.
-
-    Döner: {"tarih": "YYYY-MM-DD", "gun_kaldi": N} veya veri yoksa None.
-    Geçmiş tarihler elenir; en yakın gelecek bilanço tarihi seçilir.
+    Bir sonraki bilanço tarihini bulur. ÖNCE TradingView (BIST'te güvenilir),
+    sonra yfinance yedek. Döner: {"tarih","gun_kaldi",...} veya None.
     """
+    tv = _tv_bilanco_tarih(sembol)
+    if tv and tv.get("tarih"):
+        return tv
+
     try:
         import yfinance as yf
     except ImportError:
-        return None
+        return tv  # TV'den kısmi (son_bilanco/momentum) olabilir
 
     sem = _normalize(sembol)
     bugun = _bugun()
@@ -202,7 +230,7 @@ def portfoy_olaylari(db_path: str, gun_esigi: int = 15) -> list[str]:
 
     for sembol in sorted(pozlar.keys()):
         bil = yaklasan_bilanco(sembol)
-        if bil and bil["gun_kaldi"] <= gun_esigi:
+        if bil and bil.get("gun_kaldi") is not None and bil["gun_kaldi"] <= gun_esigi:
             kod = sembol.replace(".IS", "")
             uyarilar.append(
                 f"⚠️ {kod}: bilanço ~{bil['gun_kaldi']} gün sonra "
@@ -213,8 +241,9 @@ def portfoy_olaylari(db_path: str, gun_esigi: int = 15) -> list[str]:
 
 def olaylar_metni(db_path: str) -> str:
     """
-    Portföy olaylarını Telegram metnine çevirir.
-    Portföy boşsa dürüst mesaj; bilanço takvimi verisi yoksa uydurmaz.
+    Portföy olaylarını Telegram metnine çevirir: her hisse için yaklaşan
+    bilanço tarihi + çeyreklik kâr momentumu (TradingView gerçek verisi).
+    Portföy boşsa dürüst mesaj; tarih yoksa uydurmaz.
     """
     from portfolio.ozet import acik_pozisyonlar
 
@@ -228,15 +257,38 @@ def olaylar_metni(db_path: str) -> str:
                 "Portföyünüzde açık pozisyon yok. Hisse ekleyince yaklaşan "
                 "bilanço/temettü olaylarını burada takip edebilirsiniz.")
 
-    uyarilar = portfoy_olaylari(db_path)
     sat = [f"📅 OLAY TAKVİMİ ({len(pozlar)} hisse)", ""]
-    if uyarilar:
-        sat.append("Yaklaşan bilançolar (15 gün içi):")
-        sat += ["   " + u for u in uyarilar]
-    else:
-        sat.append("15 gün içinde takvimi belli bir bilanço bulunamadı.")
-        sat.append("ℹ️ Not: yfinance BIST hisselerinde bilanço tarihini çoğu "
-                   "zaman vermez — bu takvim verisi yok demektir, olay olmadığı "
-                   "anlamına gelmez. Kesin tarih için KAP/şirket takvimine bakın.")
-    sat += ["", "⚠️ Bilgilendirme amaçlıdır; yatırım tavsiyesi değildir."]
+    veri_var = False
+    for sembol in sorted(pozlar.keys()):
+        kod = sembol.replace(".IS", "")
+        bil = yaklasan_bilanco(sembol)   # TV öncelikli
+        if not bil:
+            sat.append(f"• {kod}: takvim verisi yok")
+            continue
+        veri_var = True
+        parca = [f"• {kod}:"]
+        if bil.get("tarih") and bil.get("gun_kaldi") is not None:
+            gk = bil["gun_kaldi"]
+            uyari = " ⚠️ yakında!" if gk <= 10 else ""
+            parca.append(f"sonraki bilanço {bil['tarih']} (~{gk}g){uyari}")
+        elif bil.get("son_bilanco"):
+            parca.append(f"son bilanço {bil['son_bilanco']}")
+        # Çeyrek kâr momentumu — yıllık (YoY) daha stabil; yoksa çeyreklik (QoQ)
+        eps = bil.get("eps_yoy")
+        etiket_yil = "yıllık"
+        if eps is None:
+            eps = bil.get("eps_qoq"); etiket_yil = "çeyreklik"
+        if eps is not None:
+            yon = "📈hızlanıyor" if eps > 5 else ("📉kâr düşüyor" if eps < -5 else "yatay")
+            # Uç baz etkisini kırp (küçük bazdan hesaplanan % absürt görünmesin)
+            eps_str = ">+200" if eps > 200 else ("<-200" if eps < -200 else f"{eps:+.0f}")
+            parca.append(f"· {etiket_yil} kâr %{eps_str} {yon}")
+        sat.append(" ".join(parca))
+
+    if not veri_var:
+        sat.append("")
+        sat.append("ℹ️ Bu hisseler için bilanço tarihi bulunamadı (veri yok "
+                   "demektir, olay olmadığı anlamına gelmez).")
+    sat += ["", "⚠️ Kaynak: TradingView. Bilgilendirme amaçlıdır; yatırım "
+            "tavsiyesi değildir."]
     return "\n".join(sat)

@@ -860,3 +860,18 @@ def test_yardim_sade_komutlar_dolu():
     y, k = cmd_yardim(), cmd_komutlar()
     assert "BURADAN BAŞLA" in y and "/komutlar" in y   # sade, yönlendirir
     assert "/oneriler" in k and "/optimize" in k        # tam liste dolu
+
+
+# ── bilanço takvimi + çeyrek momentum (ağsız) ─────────────────────────────────
+
+def test_tv_bilanco_dataclass():
+    from data.tv_scanner import TVBilanco
+    b = TVBilanco("X.IS", 1777464000.0, 1786449600.0, -73.4, 32.1, -2.5)
+    assert b.sembol == "X.IS"
+    assert b.eps_qoq == -73.4 and b.eps_yoy == 32.1
+
+
+def test_olaylar_bos_portfoy_durust(gecici_db):
+    from analysis.olaylar import olaylar_metni
+    m = olaylar_metni(gecici_db)
+    assert "açık pozisyon yok" in m

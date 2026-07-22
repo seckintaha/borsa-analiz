@@ -321,6 +321,76 @@ def tv_kalite_tara(limit: int = 1000, timeout: int = 20,
     return True, "", out
 
 
+# ── Bilanço takvimi + çeyrek momentum ─────────────────────────────────────────
+
+_BILANCO_KOLONLAR = [
+    "name",
+    "earnings_release_date",                        # son açıklanan bilanço (unix ts)
+    "earnings_release_next_date",                   # sonraki bilanço tarihi (unix ts)
+    "earnings_per_share_diluted_qoq_growth_fq",     # çeyreklik EPS büyümesi % (QoQ)
+    "earnings_per_share_diluted_yoy_growth_fq",     # çeyreklik EPS yıllık büyüme % (YoY)
+    "total_revenue_qoq_growth_fq",                  # çeyreklik gelir büyümesi % (QoQ)
+]
+
+
+@dataclass
+class TVBilanco:
+    sembol: str
+    son_bilanco_ts: Optional[float]      # son bilanço unix zaman damgası
+    sonraki_bilanco_ts: Optional[float]  # sonraki bilanço unix zaman damgası
+    eps_qoq: Optional[float]             # çeyreklik EPS büyümesi %
+    eps_yoy: Optional[float]             # çeyreklik EPS yıllık büyüme %
+    gelir_qoq: Optional[float]           # çeyreklik gelir büyümesi %
+
+
+def tv_bilanco_tara(limit: int = 1000, timeout: int = 20,
+                    tickers: list[str] | None = None) -> tuple[bool, str, list[TVBilanco]]:
+    """
+    Bilanço takvimi (son + sonraki tarih) ve çeyreklik momentum verisi çeker.
+    Kaynak: TradingView. Veri yoksa ilgili alan None; uydurulmaz.
+    """
+    payload = {
+        "filter": [],
+        "options": {"lang": "tr"},
+        "markets": ["turkey"],
+        "symbols": {"query": {"types": ["stock"]}, "tickers": tickers or []},
+        "columns": _BILANCO_KOLONLAR,
+        "sort": {"sortBy": "market_cap_basic", "sortOrder": "desc"},
+        "range": [0, min(limit, 1000)],
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+        "Content-Type": "application/json",
+        "Origin": "https://www.tradingview.com",
+        "Referer": "https://www.tradingview.com/",
+    }
+    try:
+        istek = urllib.request.Request(_TV_SCAN_URL, data=json.dumps(payload).encode(),
+                                       headers=headers)
+        with urllib.request.urlopen(istek, timeout=timeout) as yanit:
+            data = json.loads(yanit.read())
+    except Exception as exc:
+        return False, f"TradingView erişim hatası: {exc}", []
+
+    out: list[TVBilanco] = []
+    for item in data.get("data", []):
+        d = item.get("d", [])
+        if len(d) < len(_BILANCO_KOLONLAR):
+            d = d + [None] * (len(_BILANCO_KOLONLAR) - len(d))
+        sembol = str(d[0] or "").replace("BIST:", "") + ".IS"
+        out.append(TVBilanco(
+            sembol=sembol,
+            son_bilanco_ts=_guvence(d[1]),
+            sonraki_bilanco_ts=_guvence(d[2]),
+            eps_qoq=_guvence(d[3]),
+            eps_yoy=_guvence(d[4]),
+            gelir_qoq=_guvence(d[5]),
+        ))
+    if not out:
+        return False, "TradingView'dan bilanço verisi gelmedi", []
+    return True, "", out
+
+
 def sinyal_puan(s: TVSatir) -> int:
     """
     Teknik sinyal puanı hesaplar (deterministik, 0-100 arası değil ham skor).

@@ -133,6 +133,17 @@ def ayin_onerileri(db_path: str, n: int = 10) -> tuple[bool, str, list["AylikOne
     kayitlar = faktor_evreni(girdiler, agirliklar=agirliklar)
     kayit_map = {r.sembol: r for r in kayitlar}
 
+    # Bilanço momentum haritası (çeyreklik kâr çöküşü = gizli değer tuzağı).
+    # Tek istekte tüm evren; veri yoksa boş → eleme yapılmaz (güvenli).
+    bilanco_map = {}
+    try:
+        from data.tv_scanner import tv_bilanco_tara
+        okb, _hb, blist = tv_bilanco_tara(limit=1000)
+        if okb:
+            bilanco_map = {b.sembol: b for b in blist}
+    except Exception:
+        bilanco_map = {}
+
     # ── 3) Köpük/tuzak/likidite eleme + faktör eşiği ──
     adaylar = []
     for k in kal_liste:
@@ -145,6 +156,12 @@ def ayin_onerileri(db_path: str, n: int = 10) -> tuple[bool, str, list["AylikOne
         ks = kalite_skoru(k)
         if ks.etiket == "veri yok" or ks.deger_tuzagi:
             continue                                    # değer tuzağı ele
+
+        # Çeyreklik kâr çöküşü = gizli değer tuzağı (ucuz F/K'ya kanma).
+        # Yıllık çeyrek EPS büyümesi çok negatifse (kâr yapısal düşüyor) ele.
+        b = bilanco_map.get(k.sembol)
+        if b is not None and b.eps_yoy is not None and b.eps_yoy < -30:
+            continue
 
         # Köpük/tavan eleme (kullanıcı: uçmuş hisse istemiyorum)
         rsi = t.rsi if t is not None else None
