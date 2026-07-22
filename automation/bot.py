@@ -81,51 +81,50 @@ def gonder(token: str, chat_id: str, metin: str) -> bool:
 
 def cmd_yardim() -> str:
     return (
-        "🤖 Borsa Bot — Komutlar\n\n"
-        "📋 PİYASA\n"
-        "/durum     Anlık piyasa rejimi\n"
-        "/bist      Tüm BIST taraması (607 hisse)\n"
-        "/plan      Günlük işlem planı (saat saat)\n"
-        "/aylik     Aylık özet (portföy + piyasa)\n"
+        "🤖 Borsa Bot\n\n"
+        "⭐ BURADAN BAŞLA (en çok kullanılan)\n"
+        "/oneriler   Ayın en iyi hisseleri (çok-faktörlü)\n"
+        "/global     Dünya + makro nabzı (bugün nasıl?)\n"
+        "/analiz THYAO   Bir hisse: AL/TUT/SAT + seviyeler\n"
+        "/portfoyum  Portföyün + canlı kâr/zarar\n"
+        "/alarmlar   Pozisyonlarında stop/hedef uyarısı\n"
+        "/performans Önerilerim gerçekte tuttu mu?\n\n"
+        "Detaylı liste için: /komutlar\n\n"
+        "⚠️ Teknik taramadır, yatırım tavsiyesi değildir."
+    )
+
+
+def cmd_komutlar() -> str:
+    return (
+        "📖 TÜM KOMUTLAR\n\n"
+        "📈 PİYASA & ÖNERİ\n"
         "/oneriler  Ayın hisse önerileri (çok-faktörlü)\n"
-        "/performans Geçmiş önerilerim endeksi geçti mi\n"
-        "/modeltest Faktörler geçmişte işe yaramış mı (kanıt)\n"
-        "/deger     Değer yatırımı taraması (ucuz+kârlı)\n"
-        "/sektorler Sektör analizi (aylık performans)\n"
-        "/global    Küresel piyasa & makro nabzı (top-down)\n"
-        "/duyarlilik Korku/açgözlülük endeksi\n"
-        "/fikirler  Günün 5 işlem fikri (giriş/hedef/stop)\n\n"
-        "🔍 HİSSE\n"
-        "/analiz SEMBOL    Derin teknik analiz + AL/TUT/SAT\n"
-        "/temel SEMBOL     Temel analiz (F/K, ROE, marj)\n"
-        "/kalite SEMBOL    Finansal kalite skoru + tuzak kontrolü\n"
-        "/sinyaltest SEMBOL Sinyal geçmişte işe yaramış mı (edge)\n"
-        "/buyume SEMBOL    Büyüme mi temettü hissesi mi\n"
-        "/sektor <ad>      Bir sektördeki hisseler\n"
-        "/haberetki SEMBOL Haberin işlem etkisi\n"
-        "/haberyorum SEMBOL LLM haber yorumu (anahtar gerekir)\n"
-        "   (örn: /analiz THYAO)\n\n"
-        "💼 PORTFÖY (Telegram'dan yönet)\n"
-        "/portfoyum  Pozisyonların + canlı kâr/zarar\n"
-        "/ekle SEMBOL ADET [FIYAT]   örn: /ekle THYAO 100 280\n"
-        "/sat SEMBOL [ADET]          örn: /sat THYAO 50\n"
-        "/alarmlar    Stop/hedef/zarar alarmları\n"
-        "/olaylar     Yaklaşan bilanço/temettü takvimi\n"
-        "/optimize    Risk-optimal portföy ağırlığı\n"
-        "/portfoy     Zayıflık/korelasyon/hedge analizi\n"
-        "/cesitlendir Çeşitlendirme önerisi (eksik sektör)\n"
-        "/aliskanlik  İşlem alışkanlık analizi + 3 kural\n"
-        "/portfoysil  Portföyü sıfırla\n\n"
-        "📚 EĞİTİM\n"
-        "/riskyonetim Risk yönetimi (stop/pozisyon/çeşit)\n"
-        "/ekonomi     Ekonomik göstergeler → borsa\n"
-        "/kuresel     Küresel olaylar + korunma\n\n"
-        "📰 DİĞER\n"
-        "/haberler  Günün önemli haberleri\n"
-        "/arzlar    Son halka arzlar (90 gün)\n"
-        "/tarama    İzleme listesi özeti\n"
-        "/watchlist Takip ettiğin hisseler\n"
-        "/yardim    Bu liste\n\n"
+        "/fikirler  Günün 5 işlem fikri (giriş/hedef/stop)\n"
+        "/bist      Tüm BIST taraması (607 hisse)\n"
+        "/deger     Değer yatırımı taraması\n"
+        "/sektorler Sektör analizi · /sektor <ad>\n"
+        "/global    Küresel/makro · /duyarlilik korku endeksi\n"
+        "/plan günlük plan · /aylik aylık özet · /durum rejim\n\n"
+        "🔍 HİSSE ANALİZİ (örn: /analiz THYAO)\n"
+        "/analiz    Derin teknik + AL/TUT/SAT + seviye\n"
+        "/temel     F/K, ROE, marj + sektör-göreli\n"
+        "/kalite    Finansal kalite skoru + tuzak\n"
+        "/sinyaltest Sinyal bu hissede işe yaramış mı\n"
+        "/buyume    Büyüme mi temettü mü\n"
+        "/haberetki · /haberyorum (LLM, anahtar gerekir)\n\n"
+        "💼 PORTFÖY\n"
+        "/portfoyum  Pozisyonlar + kâr/zarar\n"
+        "/ekle THYAO 100 280  ·  /sat THYAO 50\n"
+        "/alarmlar   Stop/hedef/zarar uyarısı\n"
+        "/optimize   Risk-optimal ağırlık\n"
+        "/portfoy    Zayıflık/korelasyon/hedge\n"
+        "/cesitlendir · /aliskanlik · /olaylar takvim\n"
+        "/portfoysil (sıfırla)\n\n"
+        "🧪 GÜVEN & KANIT\n"
+        "/performans Önerilerim endeksi geçti mi\n"
+        "/modeltest  Faktörler geçmişte işe yaramış mı\n\n"
+        "📚 EĞİTİM: /riskyonetim /ekonomi /kuresel\n"
+        "📰 DİĞER: /haberler /arzlar /watchlist\n\n"
         "⚠️ Teknik taramadır, yatırım tavsiyesi değildir."
     )
 
@@ -925,6 +924,8 @@ def _isle(token: str, chat_id: str, mesaj: dict) -> None:
 
     if komut in ("/yardim", "/start", "/help"):
         yanit = cmd_yardim()
+    elif komut in ("/komutlar", "/menu", "/tumu"):
+        yanit = cmd_komutlar()
     elif komut == "/durum":
         yanit = cmd_durum()
     elif komut == "/tarama":

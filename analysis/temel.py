@@ -29,6 +29,40 @@ def _bist_ticker(sembol: str) -> str:
     return f"BIST:{kod}"
 
 
+def _sektor_gorel(t, tum_liste) -> list:
+    """
+    Hissenin F/K, PD/DD, ROE'sini KENDİ sektör medyanıyla kıyaslar. Enflasyon
+    nötrdür: sektördeki herkes benzer şişer, göreli konum anlamlı kalır.
+    """
+    import statistics
+    uyeler = [x for x in (tum_liste or [])
+              if x.sektor == t.sektor and x.sembol != t.sembol]
+    if len(uyeler) < 3:
+        return []
+
+    def _med(sec):
+        v = [sec(x) for x in uyeler if sec(x) is not None and sec(x) > 0]
+        return statistics.median(v) if len(v) >= 3 else None
+
+    med_fk = _med(lambda x: x.fk)
+    med_roe = _med(lambda x: x.roe)
+    med_pddd = _med(lambda x: x.pddd)
+    out = []
+    if med_fk and t.fk and t.fk > 0:
+        fark = (t.fk - med_fk) / med_fk * 100
+        out.append(f"F/K {t.fk:.1f} · sektör medyanı {med_fk:.1f} → "
+                   f"%{abs(fark):.0f} {'UCUZ' if fark < 0 else 'pahalı'}")
+    if med_pddd and t.pddd and t.pddd > 0:
+        fark = (t.pddd - med_pddd) / med_pddd * 100
+        out.append(f"PD/DD {t.pddd:.2f} · sektör medyanı {med_pddd:.2f} → "
+                   f"%{abs(fark):.0f} {'ucuz' if fark < 0 else 'pahalı'}")
+    if med_roe is not None and t.roe is not None:
+        fark = t.roe - med_roe
+        out.append(f"ROE %{t.roe:.0f} · sektör medyanı %{med_roe:.0f} → "
+                   f"{abs(fark):.0f} puan {'ÜSTÜNDE' if fark > 0 else 'altında'}")
+    return out
+
+
 # ── Tek hisse temel analiz (#8 sonuç raporları metrikleri) ────────────────────
 
 def tek_hisse_temel(sembol: str) -> str:
@@ -59,6 +93,18 @@ def tek_hisse_temel(sembol: str) -> str:
     ]
     if t.piyasa_degeri:
         sat.append(f"   Piyasa değeri: {t.piyasa_degeri/1e9:.1f} milyar ₺")
+
+    # Sektör-göreli değerleme (enflasyon-nötr — sektör içinde herkes benzer şişer,
+    # göreli konum daha anlamlıdır). Bir evren taraması ile sektör medyanı bulunur.
+    try:
+        ok2, _h2, tum = tv_temel_tara(limit=1000)
+        gorel = _sektor_gorel(t, tum) if ok2 else None
+        if gorel:
+            sat += ["", f"🏭 SEKTÖRE GÖRE ({t.sektor})"]
+            for g in gorel:
+                sat.append(f"   {g}")
+    except Exception:
+        pass
 
     # Genel okuma
     sat += ["", "🧭 ÖZET YORUM", "   " + _genel_yorum(t)]

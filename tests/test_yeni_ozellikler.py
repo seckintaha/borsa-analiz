@@ -836,3 +836,25 @@ def test_normalize_ticker_turkce():
     assert normalize_ticker("gedik") == "GEDIK"
     assert normalize_ticker(" thyao.is ") == "THYAO.IS"
     assert normalize_ticker("ŞİŞE") == "SISE"
+
+
+# ── sektör-göreli değerleme + sadeleştirilmiş yardım (ağsız) ───────────────────
+
+def test_sektor_gorel_medyan():
+    from analysis.temel import _sektor_gorel
+    from data.tv_scanner import TVTemel
+    def mk(sem, fk, roe, pddd, sek="Finance"):
+        return TVTemel(sem, sem, 10, sek, fk, pddd, 2.0, roe, 1.0, 15, 20, 1e9)
+    hedef = mk("X.IS", 4.0, 30, 1.2)
+    evren = [hedef, mk("A.IS",8,20,1.0), mk("B.IS",9,22,1.1), mk("C.IS",10,24,1.2),
+             mk("D.IS",7,25,0.9,"Tech")]  # Tech sektörü sayılmaz
+    out = _sektor_gorel(hedef, evren)
+    assert out and any("UCUZ" in s for s in out)      # F/K 4 < medyan → ucuz
+    assert any("ÜSTÜNDE" in s for s in out)            # ROE 30 > medyan
+
+
+def test_yardim_sade_komutlar_dolu():
+    from automation.bot import cmd_yardim, cmd_komutlar
+    y, k = cmd_yardim(), cmd_komutlar()
+    assert "BURADAN BAŞLA" in y and "/komutlar" in y   # sade, yönlendirir
+    assert "/oneriler" in k and "/optimize" in k        # tam liste dolu
