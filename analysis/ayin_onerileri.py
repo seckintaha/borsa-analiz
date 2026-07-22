@@ -26,11 +26,13 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 
-# Filtre eşikleri (evren daraltma — köpük/tuzak/likidite eleme)
-_MIN_PIYASA_DEGERI = 3e8      # ~300M TL altı: likidite riski, ele
+# Filtre eşikleri (evren daraltma — köpük/tuzak/likidite/oynaklık eleme)
+_MIN_PIYASA_DEGERI = 5e8      # ~500M TL altı: likidite riski, ele (300M'den sıkılaştırıldı)
 _RSI_KOPUK = 70              # RSI>70: aşırı alım köpüğü, tamamen ele
 _PERF_AY_KOPUK = 35         # son ay %35+: parabolik/tavan, ele
 _MIN_BIRLESIK = 55          # birleşik faktör skoru bu altındaysa önerilmez
+_MAX_YILLIK_OYNAKLIK = 65.0  # son 6 ay yıllık vol %65 üstü: aşırı oynak, ele
+                             # — tutarsızlığı azaltır (kazan/kaybet uçları biner)
 
 
 @dataclass
@@ -167,7 +169,7 @@ def ayin_onerileri(db_path: str, n: int = 10) -> tuple[bool, str, list["AylikOne
 
     adaylar.sort(key=lambda x: -x[0].birlesik)
 
-    # ── 4) Sektör çeşitliliği + teknik giriş/hedef/stop ──
+    # ── 4) Sektör çeşitliliği + OYNAKLIK filtresi + teknik giriş/hedef/stop ──
     oneriler: list[AylikOneri] = []
     sektor_sayac: dict[str, int] = {}
     for r, k, ks, t in adaylar:
@@ -175,15 +177,29 @@ def ayin_onerileri(db_path: str, n: int = 10) -> tuple[bool, str, list["AylikOne
             break
         if sektor_sayac.get(k.sektor, 0) >= 3:
             continue
-        sektor_sayac[k.sektor] = sektor_sayac.get(k.sektor, 0) + 1
 
-        # yfinance ile giriş/hedef/stop + 3-6 aylık momentum teyidi
+        # yfinance ile giriş/hedef/stop + oynaklık
         fr = veri_getir(db_path, k.sembol, period="1y", interval="1d")
         giris = hedef = stop = rr = None
         if fr.ok and fr.data is not None:
+            # OYNAKLIK FİLTRESİ: aşırı oynak (yıllık vol > eşik) hisse tutarsızlık
+            # kaynağıdır — kaliteli de olsa elenir (kazan-kaybet kumarhanesi olmasın).
+            try:
+                import numpy as _np
+                # Son ~6 ay (126 işlem günü) — güncel oynaklık, eski sakin
+                # dönem aşırı oynak hisseyi maskelemesin.
+                _ret = fr.data["Close"].pct_change().dropna().iloc[-126:]
+                if len(_ret) > 30:
+                    _vol = float(_ret.std() * _np.sqrt(252) * 100)
+                    if _vol > _MAX_YILLIK_OYNAKLIK:
+                        continue
+            except Exception:
+                pass
             kd = analiz_et(fr.data, k.sembol)
             if kd.ok:
                 giris, hedef, stop, rr = kd.giris, kd.kar_al, kd.zarar_kes, kd.risk_odul
+
+        sektor_sayac[k.sektor] = sektor_sayac.get(k.sektor, 0) + 1
 
         # Bollinger giriş konumu (varsa)
         bpoz = None

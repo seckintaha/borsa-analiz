@@ -277,10 +277,14 @@ class FaktorKayit:
 # DEĞER ikinci (klasik value primi). MOMENTUM üçüncü ama köpük-cezalı (tavan
 # kovalamayı önlemek için). BÜYÜME destekleyici. TREND/giriş en düşük — sadece
 # "düşen bıçak" ve kötü zamanlamayı elemek için, aşırı ağırlık verilmez.
+# KANIT-TEMELLİ AYAR (2026-07): /modeltest BIST'te momentum/trend faktörünün
+# EDGE'İ OLMADIĞINI gösterdi (mean-reversion piyasası). Bu yüzden momentum
+# ağırlığı düşürüldü (0.20→0.12), fark kalıcı üstün getiri kaynağı KALİTE ve
+# klasik value primi DEĞER'e aktarıldı. Tutarsızlığı azaltır, kanıta uyar.
 AGIRLIKLAR = {
-    "kalite": 0.30,
-    "deger": 0.25,
-    "momentum": 0.20,
+    "kalite": 0.34,
+    "deger": 0.29,
+    "momentum": 0.12,
     "buyume": 0.15,
     "trend": 0.10,
 }
@@ -305,16 +309,17 @@ def rejim_agirliklari(risk_skoru: Optional[int] = 0,
     if bist_rejim == "Boğa":  puan += 1
     elif bist_rejim == "Ayı": puan -= 1
 
+    # Not: momentum BIST'te zayıf (edge yok) — atak modda bile ölçülü tutulur.
     if puan <= -1:
-        return ({"kalite": 0.35, "deger": 0.28, "momentum": 0.10,
-                 "buyume": 0.12, "trend": 0.15},
-                "🛡️ SAVUNMACI mod (risk-off/ayı): kalite + değer + trend ağırlıklı, momentum kısıldı")
+        return ({"kalite": 0.38, "deger": 0.30, "momentum": 0.06,
+                 "buyume": 0.12, "trend": 0.14},
+                "🛡️ SAVUNMACI mod (risk-off/ayı): kalite + değer + trend ağırlıklı, momentum minimum")
     if puan >= 1:
-        return ({"kalite": 0.24, "deger": 0.22, "momentum": 0.28,
+        return ({"kalite": 0.30, "deger": 0.26, "momentum": 0.18,
                  "buyume": 0.18, "trend": 0.08},
-                "⚔️ ATAK mod (risk-on/boğa): momentum + büyüme ağırlığı artırıldı")
+                "⚔️ ATAK mod (risk-on/boğa): momentum + büyüme hafif artırıldı (BIST'te momentum zayıf)")
     return (dict(AGIRLIKLAR),
-            "⚖️ DENGELİ mod (nötr rejim): temel faktör ağırlıkları")
+            "⚖️ DENGELİ mod (nötr rejim): kalite+değer ağırlıklı (momentum kısık)")
 
 
 def birlesik_skor(f: FaktorKayit, agirliklar: dict = AGIRLIKLAR) -> float:
