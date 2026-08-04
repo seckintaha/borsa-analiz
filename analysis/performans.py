@@ -105,8 +105,13 @@ def performans_raporu(db_path: str, min_gun: int = 15,
             continue   # daha çok yeni, ölçmek için erken
 
         sembol = kyt["symbol"]
+        # Öneriler DB'ye .IS'siz kaydedilir (örn "CATES"); BIST hissesi ise
+        # yfinance'in bulması için .IS ekle (aksi halde çekme başarısız olur).
+        cekilecek = sembol
+        if not cekilecek.endswith(".IS") and cekilecek.isalpha() and len(cekilecek) <= 5:
+            cekilecek += ".IS"
         giris = kyt.get("giris_fiyat")
-        fr = veri_getir(db_path, sembol, period="1y", interval="1d")
+        fr = veri_getir(db_path, cekilecek, period="1y", interval="1d")
         if not fr.ok or fr.data is None or len(fr.data) < 2:
             continue
 
